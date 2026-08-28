@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SyncTrigger {
+  AUTOMATIC
+  MANUAL
+  COMMAND
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum CashFlowKind {
+  INCOME
+  EXPENSE
+}
+
+model Direction {
+  id              String               @id
+  name            String               @unique
+  sortOrder       Int                  @unique
+  marketingPlans  MarketingPlanValue[]
+  marketingActual MarketingActual[]
+  sales           SalesMonthly[]
+  contractorCosts ContractorCost[]
+  cashFlows       CashFlowEntry[]
+}
+
+model DataSource {
+  id                  String                  @id @default(cuid())
+  key                 String                  @unique
+  name                String
+  type                String
+  enabled             Boolean                 @default(true)
+  syncIntervalMinutes Int                     @default(30)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  syncRuns            SyncRun[]
+  snapshots           MarketingPlanSnapshot[]
+}
+
+model SyncRun {
+  id           String                 @id @default(cuid())
+  sourceId     String
+  trigger      SyncTrigger
+  status       SyncStatus
+  startedAt    DateTime               @default(now())
+  finishedAt   DateTime?
+  rowCount     Int?
+  changed      Boolean?
+  contentHash  String?
+  errorMessage String?
+  source       DataSource             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  snapshot     MarketingPlanSnapshot?
+
+  @@index([sourceId, startedAt])
+}
+
+model MarketingPlanSnapshot {
+  id         String               @id @default(cuid())
+  sourceId   String
+  syncRunId  String               @unique
+  year       Int
+  contentHash String
+  rawPayload String               @db.Text
+  createdAt  DateTime             @default(now())
+  source     DataSource           @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  syncRun    SyncRun              @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  values     MarketingPlanValue[]
+
+  @@index([sourceId, createdAt])
+  @@index([year])
+}
+
+model MarketingPlanValue {
+  snapshotId String
+  directionId String
+  month      Int
+  visits     Int
+  leads      Int
+  budget     Decimal              @db.Decimal(14, 2)
+  conversion Decimal              @db.Decimal(10, 6)
+  cpc        Decimal              @db.Decimal(12, 2)
+  cpl        Decimal              @db.Decimal(12, 2)
+  snapshot   MarketingPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  direction  Direction             @relation(fields: [directionId], references: [id])
+
+  @@id([snapshotId, directionId, month])
+  @@index([directionId, month])
+}
+
+model MarketingActual {
+  id          String    @id @default(cuid())
+  year        Int
+  month       Int
+  directionId String
+  visits      Int
+  leads       Int
+  budget      Decimal   @db.Decimal(14, 2)
+  direction   Direction @relation(fields: [directionId], references: [id])
+
+  @@unique([year, month, directionId])
+  @@index([year, month])
+}
+
+model SalesMonthly {
+  id          String    @id @default(cuid())
+  year        Int
+  month       Int
+  directionId String
+  leads       Int
+  meetings    Int
+  proposals   Int
+  contracts   Int
+  payments    Int
+  revenue     Decimal   @db.Decimal(16, 2)
+  direction   Direction @relation(fields: [directionId], references: [id])
+
+  @@unique([year, month, directionId])
+  @@index([year, month])
+}
+
+model ContractorCost {
+  id          String    @id @default(cuid())
+  year        Int
+  month       Int
+  directionId String
+  amount      Decimal   @db.Decimal(16, 2)
+  direction   Direction @relation(fields: [directionId], references: [id])
+
+  @@unique([year, month, directionId])
+  @@index([year, month])
+}
+
+model CashFlowEntry {
+  id          String       @id @default(cuid())
+  year        Int
+  month       Int
+  directionId String
+  kind        CashFlowKind
+  category    String
+  amount      Decimal      @db.Decimal(16, 2)
+  direction   Direction    @relation(fields: [directionId], references: [id])
+
+  @@unique([year, month, directionId, kind, category])
+  @@index([year, month])
+}

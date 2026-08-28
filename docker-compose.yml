@@ -1,0 +1,51 @@
+version: "2.4"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_local}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas}
+    ports:
+      - "5432:5432"
+    volumes:
+      - atlas_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas} -d ${POSTGRES_DB:-atlas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build: .
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed && npm start"
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_local}@db:5432/${POSTGRES_DB:-atlas}?schema=public
+      GOOGLE_MARKETING_PLAN_CSV_URL: ${GOOGLE_MARKETING_PLAN_CSV_URL}
+      MARKETING_PLAN_YEAR: ${MARKETING_PLAN_YEAR:-2026}
+      CONTRACTOR_SHARE_LIMIT: ${CONTRACTOR_SHARE_LIMIT:-0.40}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Astrakhan}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: sh -c "node scripts/wait-for-web.mjs && npm run worker"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas_local}@db:5432/${POSTGRES_DB:-atlas}?schema=public
+      GOOGLE_MARKETING_PLAN_CSV_URL: ${GOOGLE_MARKETING_PLAN_CSV_URL}
+      MARKETING_PLAN_YEAR: ${MARKETING_PLAN_YEAR:-2026}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Astrakhan}
+    depends_on:
+      web:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  atlas_postgres_data:
