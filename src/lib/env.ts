@@ -22,4 +22,10 @@ export const env = {
     0.4,
   ),
   timezone: process.env.APP_TIMEZONE || "Europe/Astrakhan",
+  marketingActualWebhookSecret:
+    process.env.MARKETING_ACTUAL_WEBHOOK_SECRET ?? "",
+  marketingActualSpreadsheetId:
+    process.env.MARKETING_ACTUAL_SPREADSHEET_ID ?? "",
+  marketingActualSheetName:
+    process.env.MARKETING_ACTUAL_SHEET_NAME ?? "",
 };

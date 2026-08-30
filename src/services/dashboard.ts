@@ -14,6 +14,7 @@ import {
 } from "@/lib/constants";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { calculateMarketingMetrics } from "@/services/marketing-metrics";
 import type {
   CashFlowRow,
   DashboardQuery,
@@ -105,17 +106,7 @@ function periodBuckets(months: number[], granularity: Granularity): PeriodBucket
 }
 
 function marketingTotals(rows: NumericMarketingRow[]) {
-  const budget = sum(rows.map((row) => row.budget));
-  const visits = sum(rows.map((row) => row.visits));
-  const leads = sum(rows.map((row) => row.leads));
-  return {
-    budget,
-    visits,
-    leads,
-    conversion: ratio(leads, visits),
-    cpc: ratio(budget, visits),
-    cpl: ratio(budget, leads),
-  };
+  return calculateMarketingMetrics(rows);
 }
 
 function metricKpi(
@@ -146,7 +137,10 @@ function metricKpi(
 function commonMeta(
   section: DashboardSection,
   query: DashboardQuery,
-  lastSyncAt: Date | null = null,
+  options: {
+    actualThrough?: string | null;
+    lastSyncAt?: Date | null;
+  } = {},
 ) {
   return {
     section,
@@ -154,9 +148,10 @@ function commonMeta(
     to: query.to,
     granularity: query.granularity,
     directions: query.directions,
-    actualThrough: "2026-08",
+    actualThrough:
+      "actualThrough" in options ? (options.actualThrough ?? null) : "2026-08",
     planThrough: "2026-12",
-    lastSyncAt: lastSyncAt?.toISOString() ?? null,
+    lastSyncAt: options.lastSyncAt?.toISOString() ?? null,
   };
 }
 
@@ -173,7 +168,7 @@ function numericPlan(row: MarketingPlanValue): NumericMarketingRow {
 function numericActual(row: MarketingActual): NumericMarketingRow {
   return {
     directionId: row.directionId,
-    month: row.month,
+    month: row.date.getUTCMonth() + 1,
     visits: row.visits,
     leads: row.leads,
     budget: row.budget.toNumber(),
@@ -184,7 +179,26 @@ async function marketingDashboard(
   query: DashboardQuery,
 ): Promise<DashboardResponse> {
   const months = selectedMonths(query);
-  const comparableMonths = months.filter((month) => month <= 8);
+  const syncState =
+    env.marketingActualSpreadsheetId && env.marketingActualSheetName
+      ? await prisma.marketingActualSyncState.findUnique({
+          where: {
+            spreadsheetId_sheetName: {
+              spreadsheetId: env.marketingActualSpreadsheetId,
+              sheetName: env.marketingActualSheetName,
+            },
+          },
+        })
+      : await prisma.marketingActualSyncState.findFirst({
+          orderBy: { updatedAt: "desc" },
+        });
+  const actualThrough = syncState?.maxDate?.toISOString().slice(0, 10) ?? null;
+  const actualThroughMonth = syncState?.maxDate
+    ? syncState.maxDate.getUTCMonth() + 1
+    : 0;
+  const comparableMonths = months.filter(
+    (month) => month <= actualThroughMonth,
+  );
   const priorMonths = previousMonths(comparableMonths);
   const snapshot = await prisma.marketingPlanSnapshot.findFirst({
     where: { year: 2026 },
@@ -202,19 +216,35 @@ async function marketingDashboard(
           },
         })
       : Promise.resolve([]),
-    prisma.marketingActual.findMany({
-      where: {
-        year: 2026,
-        directionId: { in: query.directions },
-        month: { in: comparableMonths },
-      },
-    }),
+    comparableMonths.length
+      ? prisma.marketingActual.findMany({
+          where: {
+            directionId: { in: query.directions },
+            date: {
+              gte: new Date(
+                Date.UTC(2026, comparableMonths[0] - 1, 1),
+              ),
+              lt: new Date(
+                Date.UTC(
+                  2026,
+                  comparableMonths[comparableMonths.length - 1],
+                  1,
+                ),
+              ),
+            },
+          },
+        })
+      : Promise.resolve([]),
     priorMonths.length
       ? prisma.marketingActual.findMany({
           where: {
-            year: 2026,
             directionId: { in: query.directions },
-            month: { in: priorMonths },
+            date: {
+              gte: new Date(Date.UTC(2026, priorMonths[0] - 1, 1)),
+              lt: new Date(
+                Date.UTC(2026, priorMonths[priorMonths.length - 1], 1),
+              ),
+            },
           },
         })
       : Promise.resolve([]),
@@ -223,7 +253,9 @@ async function marketingDashboard(
   const plan = planDb.map(numericPlan);
   const actual = actualDb.map(numericActual);
   const previous = previousDb.map(numericActual);
-  const comparablePlan = plan.filter((row) => row.month <= 8);
+  const comparablePlan = plan.filter(
+    (row) => row.month <= actualThroughMonth,
+  );
   const planKpiRows = comparableMonths.length ? comparablePlan : plan;
   const planTotals = marketingTotals(planKpiRows);
   const actualTotals = marketingTotals(actual);
@@ -328,12 +360,17 @@ async function marketingDashboard(
 
   return {
     meta: {
-      ...commonMeta("marketing", query, snapshot?.createdAt ?? null),
+      ...commonMeta("marketing", query, {
+        actualThrough,
+        lastSyncAt: syncState?.lastSuccessAt ?? null,
+      }),
       notice:
-        months.some((month) => month > 8) && comparableMonths.length
-          ? "План показан до декабря, сравнение рассчитано по доступному факту до августа."
-          : months.every((month) => month > 8)
+        actualThrough && months.some((month) => month > actualThroughMonth) && comparableMonths.length
+          ? `План показан до декабря, сравнение рассчитано по доступному факту на ${actualThrough.split("-").reverse().join(".")}.`
+          : actualThrough && months.every((month) => month > actualThroughMonth)
             ? "Для выбранного периода доступен только план."
+            : !actualThrough
+              ? "Маркетинговый факт ещё не синхронизирован."
             : snapshot
               ? undefined
               : "Маркетинговый план ещё не синхронизирован.",

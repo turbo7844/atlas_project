@@ -36,7 +36,7 @@ export interface DashboardMeta {
   to: string;
   granularity: Granularity;
   directions: DirectionId[];
-  actualThrough: string;
+  actualThrough: string | null;
   planThrough: string;
   notice?: string;
   lastSyncAt?: string | null;
