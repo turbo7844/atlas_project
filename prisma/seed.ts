@@ -91,6 +91,22 @@ async function seed() {
     },
   });
 
+  await prisma.dataSource.upsert({
+    where: { key: "google-marketing-actual" },
+    update: {
+      name: "Маркетинговый факт Google Sheets",
+      type: "APPS_SCRIPT_WEBHOOK",
+      enabled: true,
+      syncIntervalMinutes: 1,
+    },
+    create: {
+      key: "google-marketing-actual",
+      name: "Маркетинговый факт Google Sheets",
+      type: "APPS_SCRIPT_WEBHOOK",
+      syncIntervalMinutes: 1,
+    },
+  });
+
   for (let month = 1; month <= 8; month += 1) {
     for (const [directionIndex, direction] of DIRECTIONS.entries()) {
       const directionDrift = 1 + (directionIndex - 2) * 0.012;
@@ -127,25 +143,6 @@ async function seed() {
         revenue.toNumber() *
           (direction.contractorShare + ((month + directionIndex) % 3 - 1) * 0.012),
       );
-
-      await prisma.marketingActual.upsert({
-        where: {
-          year_month_directionId: {
-            year: 2026,
-            month,
-            directionId: direction.id,
-          },
-        },
-        update: { visits, leads, budget },
-        create: {
-          year: 2026,
-          month,
-          directionId: direction.id,
-          visits,
-          leads,
-          budget,
-        },
-      });
 
       await prisma.salesMonthly.upsert({
         where: {

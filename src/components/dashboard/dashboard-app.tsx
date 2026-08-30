@@ -2,7 +2,13 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- Эффекты загружают состояние из localStorage и серверного API. */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   DirectionFilter,
@@ -73,6 +79,15 @@ type SyncStatus = {
   } | null;
 };
 
+type MarketingActualSyncStatus = {
+  configured: boolean;
+  lastSuccessAt: string | null;
+  rowCount: number;
+  maxDate: string | null;
+  revision: number;
+  error: string | null;
+};
+
 const defaultState: PersistedState = {
   section: "marketing",
   directions: DIRECTIONS.map((direction) => direction.id),
@@ -91,6 +106,15 @@ export function DashboardApp() {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [actualSyncStatus, setActualSyncStatus] =
+    useState<MarketingActualSyncStatus | null>(null);
+  const stateRef = useRef(state);
+  const actualRevisionRef = useRef(0);
+  const quietRefreshRef = useRef(false);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     try {
@@ -135,6 +159,54 @@ export function DashboardApp() {
   }, [loadSyncStatus]);
 
   useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+    let events: EventSource | null = null;
+    const handleUpdate = (event: MessageEvent<string>) => {
+      try {
+        const status = JSON.parse(event.data) as MarketingActualSyncStatus;
+        setActualSyncStatus(status);
+        if (status.revision <= actualRevisionRef.current) return;
+        actualRevisionRef.current = status.revision;
+        if (stateRef.current.section === "marketing") {
+          quietRefreshRef.current = true;
+          setRefreshToken((value) => value + 1);
+        }
+      } catch {
+        // Повреждённое SSE-событие будет исправлено следующей ревизией.
+      }
+    };
+
+    fetch("/api/sync/marketing-actual", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось получить состояние маркетингового факта.");
+        }
+        return (await response.json()) as MarketingActualSyncStatus;
+      })
+      .then((status) => {
+        if (cancelled) return;
+        setActualSyncStatus(status);
+        actualRevisionRef.current = status.revision;
+        events = new EventSource(
+          `/api/updates/marketing-actual?revision=${status.revision}`,
+        );
+        events.addEventListener("marketing-actual", handleUpdate);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        events = new EventSource("/api/updates/marketing-actual?revision=0");
+        events.addEventListener("marketing-actual", handleUpdate);
+      });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
+  }, [ready]);
+
+  useEffect(() => {
     if (!ready || state.directions.length === 0) {
       setData(null);
       setLoading(false);
@@ -149,8 +221,12 @@ export function DashboardApp() {
       granularity: state.granularity,
       directions: state.directions.join(","),
     });
-    setLoading(true);
-    setError(null);
+    const quiet = quietRefreshRef.current && state.section === "marketing";
+    quietRefreshRef.current = false;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
 
     fetch(`/api/dashboard/${state.section}?${params}`, {
       cache: "no-store",
@@ -173,14 +249,16 @@ export function DashboardApp() {
         if (requestError instanceof Error && requestError.name === "AbortError") {
           return;
         }
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Не удалось загрузить данные.",
-        );
+        if (!quiet) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Не удалось загрузить данные.",
+          );
+        }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted && !quiet) setLoading(false);
       });
 
     return () => controller.abort();
@@ -226,6 +304,17 @@ export function DashboardApp() {
 
   const onlyFutureFact =
     state.section !== "marketing" && state.from > "2026-08";
+  const dataNotice = [
+    data?.meta.notice,
+    state.section === "marketing" && data?.meta.lastSyncAt
+      ? `Факт обновлён ${formatDateTime(data.meta.lastSyncAt)}.`
+      : null,
+    state.section === "marketing" && actualSyncStatus?.error
+      ? actualSyncStatus.error
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <main className="dashboard-shell">
@@ -300,7 +389,7 @@ export function DashboardApp() {
           <h1>{currentTab.title}</h1>
           <p>{currentTab.description}</p>
         </div>
-        {data?.meta.notice ? <p className="data-notice">{data.meta.notice}</p> : null}
+        {dataNotice ? <p className="data-notice">{dataNotice}</p> : null}
       </section>
 
       {state.directions.length === 0 ? (
@@ -334,7 +423,7 @@ export function DashboardApp() {
 
       <footer className="app-footer">
         <span>Atlas</span>
-        <span>Демонстрационный факт · январь—август 2026</span>
+        <span>Данные обновляются из подключённых источников</span>
       </footer>
 
       {toast ? (

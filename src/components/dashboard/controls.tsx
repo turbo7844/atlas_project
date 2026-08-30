@@ -163,7 +163,9 @@ export function PeriodPicker({
                 );
               })}
             </div>
-            <p className="plan-range-note">План доступен по декабрь, факт — по август.</p>
+            <p className="plan-range-note">
+              План доступен по декабрь, факт — по последнюю принятую дату.
+            </p>
           </div>
         </div>
       </details>
