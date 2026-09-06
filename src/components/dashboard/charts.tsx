@@ -91,6 +91,11 @@ export interface LineMetric {
   label: string;
   color?: string;
   format?: ValueFormat;
+  details?: Array<{
+    key: string;
+    label: string;
+    format?: ValueFormat;
+  }>;
 }
 
 export function LineChart({
@@ -143,10 +148,19 @@ export function LineChart({
               <polyline points={points} fill="none" stroke={color} className="chart-line" />
               {data.map((point, index) => {
                 const value = Number(point[metric.key] ?? 0);
+                const details = metric.details
+                  ?.map(
+                    (detail) =>
+                      `${detail.label}: ${formatValue(
+                        Number(point[detail.key] ?? 0),
+                        detail.format ?? "integer",
+                      )}`,
+                  )
+                  .join("; ");
                 return (
                   <circle key={point.key} cx={x(index)} cy={y(value)} r="3.5" fill={color}>
                     <title>
-                      {`${point.label}, ${metric.label}: ${formatValue(value, metric.format ?? "integer")}`}
+                      {`${point.label}, ${metric.label}: ${formatValue(value, metric.format ?? "integer")}${details ? `. ${details}` : ""}`}
                     </title>
                   </circle>
                 );

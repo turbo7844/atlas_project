@@ -3,6 +3,7 @@ import type {
   ContractorCost,
   MarketingActual,
   MarketingPlanValue,
+  PayrollMonthly,
   SalesMonthly,
 } from "@prisma/client";
 
@@ -389,30 +390,65 @@ function contractorTotal(rows: ContractorCost[]) {
   return sum(rows.map((row) => row.amount.toNumber()));
 }
 
+function payrollTotals(rows: PayrollMonthly[]) {
+  const salary = sum(rows.map((row) => row.salary.toNumber()));
+  const vacationPay = sum(rows.map((row) => row.vacationPay.toNumber()));
+  const bonus = sum(rows.map((row) => row.bonus.toNumber()));
+  const salesBonus = sum(rows.map((row) => row.salesBonus.toNumber()));
+  return {
+    total: salary + vacationPay + bonus + salesBonus,
+    salary,
+    vacationPay,
+    bonus,
+    salesBonus,
+  };
+}
+
 async function revenueDashboard(
   query: DashboardQuery,
 ): Promise<DashboardResponse> {
-  const months = selectedMonths(query).filter((month) => month <= 8);
+  const months = selectedMonths(query);
   const priorMonths = previousMonths(months);
   const baseWhere = {
     year: 2026,
     directionId: { in: query.directions },
   };
-  const [sales, costs, previousSales, previousCosts] = await Promise.all([
+  const payrollWhere = {
+    ...baseWhere,
+    source: { key: "local-payroll-xlsx" },
+  };
+  const [
+    sales,
+    costs,
+    payroll,
+    previousSales,
+    previousCosts,
+    previousPayroll,
+    payrollSyncState,
+  ] = await Promise.all([
     prisma.salesMonthly.findMany({ where: { ...baseWhere, month: { in: months } } }),
     prisma.contractorCost.findMany({ where: { ...baseWhere, month: { in: months } } }),
+    prisma.payrollMonthly.findMany({ where: { ...payrollWhere, month: { in: months } } }),
     priorMonths.length
       ? prisma.salesMonthly.findMany({ where: { ...baseWhere, month: { in: priorMonths } } })
       : Promise.resolve([]),
     priorMonths.length
       ? prisma.contractorCost.findMany({ where: { ...baseWhere, month: { in: priorMonths } } })
       : Promise.resolve([]),
+    priorMonths.length
+      ? prisma.payrollMonthly.findMany({ where: { ...payrollWhere, month: { in: priorMonths } } })
+      : Promise.resolve([]),
+    prisma.payrollSyncState.findFirst({
+      where: { source: { key: "local-payroll-xlsx" } },
+    }),
   ]);
 
   const revenue = salesRevenue(sales);
   const contractors = contractorTotal(costs);
   const previousRevenue = salesRevenue(previousSales);
   const previousContractors = contractorTotal(previousCosts);
+  const payrollValue = payrollTotals(payroll);
+  const previousPayrollValue = payrollTotals(previousPayroll);
   const margin = revenue - contractors;
   const previousMargin = previousRevenue - previousContractors;
   const share = ratio(contractors, revenue);
@@ -421,17 +457,45 @@ async function revenueDashboard(
   const kpis: KpiValue[] = [
     metricKpi("revenue", "Выручка", revenue, null, previousRevenue || null, "currency"),
     metricKpi("contractors", "Подрядчики", contractors, null, previousContractors || null, "currency"),
-    metricKpi("margin", "Маржа", margin, null, previousMargin || null, "currency"),
+    metricKpi(
+      "payroll",
+      "ФОТ",
+      payroll.length ? payrollValue.total : null,
+      null,
+      previousPayroll.length ? previousPayrollValue.total : null,
+      "currency",
+      "Оклад, отпускные, премия и бонус от продаж",
+    ),
+    metricKpi("margin", "Маржа до ФОТ", margin, null, previousMargin || null, "currency"),
     metricKpi("share", "Доля подрядчиков", share, null, previousShare, "percent"),
   ];
 
+  const latestPayrollPeriod =
+    payrollSyncState?.latestYear && payrollSyncState.latestMonth
+      ? `${payrollSyncState.latestYear}-${String(payrollSyncState.latestMonth).padStart(2, "0")}`
+      : null;
+  const actualThrough =
+    latestPayrollPeriod && latestPayrollPeriod > "2026-08"
+      ? latestPayrollPeriod
+      : "2026-08";
+
   const buckets = periodBuckets(months, query.granularity);
-  const series: SeriesPoint[] = buckets.map((bucket) => ({
-    key: bucket.key,
-    label: bucket.label,
-    revenue: salesRevenue(sales.filter((row) => bucket.months.includes(row.month))),
-    contractorCost: contractorTotal(costs.filter((row) => bucket.months.includes(row.month))),
-  }));
+  const series: SeriesPoint[] = buckets.map((bucket) => {
+    const periodPayroll = payrollTotals(
+      payroll.filter((row) => bucket.months.includes(row.month)),
+    );
+    return {
+      key: bucket.key,
+      label: bucket.label,
+      revenue: salesRevenue(sales.filter((row) => bucket.months.includes(row.month))),
+      contractorCost: contractorTotal(costs.filter((row) => bucket.months.includes(row.month))),
+      payroll: periodPayroll.total,
+      payrollSalary: periodPayroll.salary,
+      payrollVacationPay: periodPayroll.vacationPay,
+      payrollBonus: periodPayroll.bonus,
+      payrollSalesBonus: periodPayroll.salesBonus,
+    };
+  });
 
   const rows: RevenueRow[] = DIRECTIONS.filter((direction) =>
     query.directions.includes(direction.id),
@@ -442,12 +506,20 @@ async function revenueDashboard(
     const directionCost = contractorTotal(
       costs.filter((row) => row.directionId === direction.id),
     );
+    const directionPayroll = payrollTotals(
+      payroll.filter((row) => row.directionId === direction.id),
+    );
     const contractorShare = ratio(directionCost, directionRevenue);
     return {
       directionId: direction.id,
       direction: direction.name,
       revenue: directionRevenue,
       contractorCost: directionCost,
+      payroll: directionPayroll.total,
+      payrollSalary: directionPayroll.salary,
+      payrollVacationPay: directionPayroll.vacationPay,
+      payrollBonus: directionPayroll.bonus,
+      payrollSalesBonus: directionPayroll.salesBonus,
       margin: directionRevenue - directionCost,
       contractorShare,
       overLimit:
@@ -457,7 +529,15 @@ async function revenueDashboard(
   });
 
   return {
-    meta: commonMeta("revenue", query),
+    meta: {
+      ...commonMeta("revenue", query, {
+        actualThrough,
+        lastSyncAt: payrollSyncState?.lastSuccessAt ?? null,
+      }),
+      notice: payrollSyncState?.lastSuccessAt
+        ? undefined
+        : "Начисления ФОТ ещё не синхронизированы.",
+    },
     kpis,
     series,
     rows,

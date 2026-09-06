@@ -97,6 +97,61 @@ const dashboardFixture = {
   contractorShareLimit: 0.4,
 };
 
+const revenueFixture = {
+  ...dashboardFixture,
+  meta: {
+    ...dashboardFixture.meta,
+    section: "revenue",
+    from: "2026-04",
+    to: "2026-04",
+    actualThrough: "2026-08",
+    lastSyncAt: "2026-08-31T10:00:00.000Z",
+  },
+  kpis: [
+    { key: "revenue", label: "Выручка", value: 3_000_000, delta: 0.1, format: "currency" },
+    { key: "contractors", label: "Подрядчики", value: 900_000, delta: 0.05, format: "currency" },
+    {
+      key: "payroll",
+      label: "ФОТ",
+      value: 450_000,
+      delta: 0.04,
+      format: "currency",
+      hint: "Оклад, отпускные, премия и бонус от продаж",
+    },
+    { key: "margin", label: "Маржа до ФОТ", value: 2_100_000, delta: 0.12, format: "currency" },
+    { key: "share", label: "Доля подрядчиков", value: 0.3, delta: -0.02, format: "percent" },
+  ],
+  series: [
+    {
+      key: "2026-04",
+      label: "Апр",
+      revenue: 3_000_000,
+      contractorCost: 900_000,
+      payroll: 450_000,
+      payrollSalary: 350_000,
+      payrollVacationPay: 20_000,
+      payrollBonus: 70_000,
+      payrollSalesBonus: 10_000,
+    },
+  ],
+  rows: [
+    {
+      directionId: "branding",
+      direction: "Брендинг",
+      revenue: 3_000_000,
+      contractorCost: 900_000,
+      payroll: 450_000,
+      payrollSalary: 350_000,
+      payrollVacationPay: 20_000,
+      payrollBonus: 70_000,
+      payrollSalesBonus: 10_000,
+      margin: 2_100_000,
+      contractorShare: 0.3,
+      overLimit: false,
+    },
+  ],
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/sync/marketing-plan", async (route) => {
     if (route.request().method() === "POST") {
@@ -126,16 +181,80 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
-  await page.route("**/api/dashboard/**", async (route) => {
-    const section = new URL(route.request().url()).pathname.split("/").at(-1);
+  await page.route("**/api/sync/payroll", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        ...dashboardFixture,
-        meta: { ...dashboardFixture.meta, section },
+        configured: true,
+        status: "SUCCESS",
+        revision: 1,
+        lastSuccessAt: "2026-08-31T10:00:00.000Z",
+        employeeCount: 14,
+        aggregateCount: 40,
+        latestPeriod: "2026-08",
+        error: null,
       }),
     });
   });
+
+  await page.route("**/api/updates/payroll**", async (route) => {
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: `event: payroll\ndata: ${JSON.stringify({
+        configured: true,
+        status: "SUCCESS",
+        revision: 2,
+        lastSuccessAt: "2026-08-31T10:01:00.000Z",
+        employeeCount: 14,
+        aggregateCount: 40,
+        latestPeriod: "2026-08",
+        error: null,
+      })}\n\n`,
+    });
+  });
+
+  await page.route("**/api/dashboard/**", async (route) => {
+    const section = new URL(route.request().url()).pathname.split("/").at(-1);
+    const fixture = section === "revenue" ? revenueFixture : dashboardFixture;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...fixture,
+        meta: { ...fixture.meta, section },
+      }),
+    });
+  });
+});
+
+test("показывает ФОТ и сохраняет фильтры при фоновом обновлении", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "atlas-dashboard-filters",
+      JSON.stringify({
+        section: "revenue",
+        directions: ["branding"],
+        from: "2026-04",
+        to: "2026-04",
+        granularity: "month",
+      }),
+    );
+  });
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Выручка и ФОТ", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Выручка, ФОТ и подрядчики" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("columnheader", { name: "ФОТ", exact: true }),
+  ).toBeVisible();
+  const payrollCell = page.getByLabel(/ФОТ 450\s000/);
+  await expect(payrollCell).toBeVisible();
+  await expect(payrollCell).not.toHaveAttribute("aria-label", /,00/);
+  await expect(page.getByText("Апрель 2026", { exact: true })).toBeVisible();
+  await expect(page.locator(".filter-button").filter({ hasText: "Направления" }).getByText("1")).toBeVisible();
 });
 
 test("открывает четыре раздела и сохраняет общий интерфейс", async ({ page }) => {

@@ -28,4 +28,6 @@ export const env = {
     process.env.MARKETING_ACTUAL_SPREADSHEET_ID ?? "",
   marketingActualSheetName:
     process.env.MARKETING_ACTUAL_SHEET_NAME ?? "",
+  payrollXlsxDirectory: process.env.PAYROLL_XLSX_DIRECTORY ?? "",
+  payrollXlsxFilename: process.env.PAYROLL_XLSX_FILENAME ?? "",
 };

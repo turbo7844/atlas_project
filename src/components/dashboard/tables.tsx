@@ -107,7 +107,8 @@ function RevenueTable({ rows }: { rows: RevenueRow[] }) {
             <th>Направление</th>
             <th>Выручка</th>
             <th>Подрядчики</th>
-            <th>Маржа</th>
+            <th>ФОТ</th>
+            <th>Маржа до ФОТ</th>
             <th>Доля подрядчиков</th>
           </tr>
         </thead>
@@ -117,6 +118,16 @@ function RevenueTable({ rows }: { rows: RevenueRow[] }) {
               <th scope="row">{row.direction}</th>
               <td>{formatValue(row.revenue, "currency")}</td>
               <td>{formatValue(row.contractorCost, "currency")}</td>
+              <td>
+                <span
+                  className="payroll-value"
+                  tabIndex={0}
+                  data-tooltip={`Оклад: ${formatValue(row.payrollSalary, "currency")}; отпускные: ${formatValue(row.payrollVacationPay, "currency")}; премия: ${formatValue(row.payrollBonus, "currency")}; бонус от продаж: ${formatValue(row.payrollSalesBonus, "currency")}`}
+                  aria-label={`ФОТ ${formatValue(row.payroll, "currency")}. Оклад ${formatValue(row.payrollSalary, "currency")}, отпускные ${formatValue(row.payrollVacationPay, "currency")}, премия ${formatValue(row.payrollBonus, "currency")}, бонус от продаж ${formatValue(row.payrollSalesBonus, "currency")}`}
+                >
+                  {formatValue(row.payroll, "currency")}
+                </span>
+              </td>
               <td>{formatValue(row.margin, "currency")}</td>
               <td>
                 <span className={row.overLimit ? "warm-value" : ""}>

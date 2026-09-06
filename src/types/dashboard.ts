@@ -4,7 +4,11 @@ import type {
   Granularity,
 } from "@/lib/constants";
 
-export type ValueFormat = "currency" | "integer" | "percent" | "decimal";
+export type ValueFormat =
+  | "currency"
+  | "integer"
+  | "percent"
+  | "decimal";
 
 export interface DashboardQuery {
   from: string;
@@ -64,6 +68,11 @@ export interface RevenueRow {
   direction: string;
   revenue: number;
   contractorCost: number;
+  payroll: number;
+  payrollSalary: number;
+  payrollVacationPay: number;
+  payrollBonus: number;
+  payrollSalesBonus: number;
   margin: number;
   contractorShare: number | null;
   overLimit: boolean;

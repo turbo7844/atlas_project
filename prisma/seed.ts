@@ -107,6 +107,22 @@ async function seed() {
     },
   });
 
+  await prisma.dataSource.upsert({
+    where: { key: "local-payroll-xlsx" },
+    update: {
+      name: "Начисления ФОТ из локального XLSX",
+      type: "LOCAL_XLSX",
+      enabled: true,
+      syncIntervalMinutes: 1,
+    },
+    create: {
+      key: "local-payroll-xlsx",
+      name: "Начисления ФОТ из локального XLSX",
+      type: "LOCAL_XLSX",
+      syncIntervalMinutes: 1,
+    },
+  });
+
   for (let month = 1; month <= 8; month += 1) {
     for (const [directionIndex, direction] of DIRECTIONS.entries()) {
       const directionDrift = 1 + (directionIndex - 2) * 0.012;

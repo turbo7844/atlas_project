@@ -41,9 +41,9 @@ const tabs: Array<{
   },
   {
     id: "revenue",
-    label: "Выручка",
-    title: "Выручка",
-    description: "Доход, подрядчики и маржинальность",
+    label: "Выручка и ФОТ",
+    title: "Выручка и ФОТ",
+    description: "Доход, начисления команды, подрядчики и маржинальность до ФОТ",
   },
   {
     id: "cash-flow",
@@ -88,6 +88,17 @@ type MarketingActualSyncStatus = {
   error: string | null;
 };
 
+type PayrollSyncStatus = {
+  configured: boolean;
+  status: string;
+  lastSuccessAt: string | null;
+  employeeCount: number;
+  aggregateCount: number;
+  latestPeriod: string | null;
+  revision: number;
+  error: string | null;
+};
+
 const defaultState: PersistedState = {
   section: "marketing",
   directions: DIRECTIONS.map((direction) => direction.id),
@@ -108,9 +119,12 @@ export function DashboardApp() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [actualSyncStatus, setActualSyncStatus] =
     useState<MarketingActualSyncStatus | null>(null);
+  const [payrollSyncStatus, setPayrollSyncStatus] =
+    useState<PayrollSyncStatus | null>(null);
   const stateRef = useRef(state);
   const actualRevisionRef = useRef(0);
-  const quietRefreshRef = useRef(false);
+  const payrollRevisionRef = useRef(0);
+  const quietRefreshRef = useRef<DashboardSection | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -170,7 +184,7 @@ export function DashboardApp() {
         if (status.revision <= actualRevisionRef.current) return;
         actualRevisionRef.current = status.revision;
         if (stateRef.current.section === "marketing") {
-          quietRefreshRef.current = true;
+          quietRefreshRef.current = "marketing";
           setRefreshToken((value) => value + 1);
         }
       } catch {
@@ -207,6 +221,54 @@ export function DashboardApp() {
   }, [ready]);
 
   useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+    let events: EventSource | null = null;
+    const handleUpdate = (event: MessageEvent<string>) => {
+      try {
+        const status = JSON.parse(event.data) as PayrollSyncStatus;
+        setPayrollSyncStatus(status);
+        if (status.revision <= payrollRevisionRef.current) return;
+        payrollRevisionRef.current = status.revision;
+        if (stateRef.current.section === "revenue") {
+          quietRefreshRef.current = "revenue";
+          setRefreshToken((value) => value + 1);
+        }
+      } catch {
+        // Повреждённое SSE-событие будет исправлено следующей проверкой.
+      }
+    };
+
+    fetch("/api/sync/payroll", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось получить состояние синхронизации ФОТ.");
+        }
+        return (await response.json()) as PayrollSyncStatus;
+      })
+      .then((status) => {
+        if (cancelled) return;
+        setPayrollSyncStatus(status);
+        payrollRevisionRef.current = status.revision;
+        events = new EventSource(
+          `/api/updates/payroll?revision=${status.revision}`,
+        );
+        events.addEventListener("payroll", handleUpdate);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        events = new EventSource("/api/updates/payroll?revision=0");
+        events.addEventListener("payroll", handleUpdate);
+      });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
+  }, [ready]);
+
+  useEffect(() => {
     if (!ready || state.directions.length === 0) {
       setData(null);
       setLoading(false);
@@ -221,8 +283,8 @@ export function DashboardApp() {
       granularity: state.granularity,
       directions: state.directions.join(","),
     });
-    const quiet = quietRefreshRef.current && state.section === "marketing";
-    quietRefreshRef.current = false;
+    const quiet = quietRefreshRef.current === state.section;
+    quietRefreshRef.current = null;
     if (!quiet) {
       setLoading(true);
       setError(null);
@@ -303,7 +365,9 @@ export function DashboardApp() {
   };
 
   const onlyFutureFact =
-    state.section !== "marketing" && state.from > "2026-08";
+    state.section !== "marketing" &&
+    state.section !== "revenue" &&
+    state.from > "2026-08";
   const dataNotice = [
     data?.meta.notice,
     state.section === "marketing" && data?.meta.lastSyncAt
@@ -311,6 +375,12 @@ export function DashboardApp() {
       : null,
     state.section === "marketing" && actualSyncStatus?.error
       ? actualSyncStatus.error
+      : null,
+    state.section === "revenue" && data?.meta.lastSyncAt
+      ? `ФОТ обновлён ${formatDateTime(data.meta.lastSyncAt)}.`
+      : null,
+    state.section === "revenue" && payrollSyncStatus?.error
+      ? payrollSyncStatus.error
       : null,
   ]
     .filter(Boolean)

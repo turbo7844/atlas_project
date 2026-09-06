@@ -31,6 +31,8 @@ services:
       MARKETING_ACTUAL_WEBHOOK_SECRET: ${MARKETING_ACTUAL_WEBHOOK_SECRET}
       MARKETING_ACTUAL_SPREADSHEET_ID: ${MARKETING_ACTUAL_SPREADSHEET_ID}
       MARKETING_ACTUAL_SHEET_NAME: ${MARKETING_ACTUAL_SHEET_NAME}
+      PAYROLL_XLSX_DIRECTORY: /data/payroll
+      PAYROLL_XLSX_FILENAME: ${PAYROLL_XLSX_FILENAME:-_03_Начисления_ЗП.xlsx}
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +47,10 @@ services:
       MARKETING_PLAN_YEAR: ${MARKETING_PLAN_YEAR:-2026}
       SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Astrakhan}
+      PAYROLL_XLSX_DIRECTORY: /data/payroll
+      PAYROLL_XLSX_FILENAME: ${PAYROLL_XLSX_FILENAME:-_03_Начисления_ЗП.xlsx}
+    volumes:
+      - ${PAYROLL_XLSX_DIRECTORY:-./xlsx}:/data/payroll:ro
     depends_on:
       web:
         condition: service_started

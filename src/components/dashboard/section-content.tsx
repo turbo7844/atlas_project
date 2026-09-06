@@ -131,14 +131,26 @@ function RevenueFeatures({ data }: { data: DashboardResponse }) {
           {formatValue(data.contractorShareLimit, "percent")}.
         </p>
       </Panel>
-      <Panel eyebrow="Динамика" title="Выручка и подрядчики">
+      <Panel eyebrow="Динамика" title="Выручка, ФОТ и подрядчики">
         <LineChart
           data={data.series}
           metrics={[
             { key: "revenue", label: "Выручка", color: "#1f5b8f", format: "currency" },
             { key: "contractorCost", label: "Подрядчики", color: "#d3a86f", format: "currency" },
+            {
+              key: "payroll",
+              label: "ФОТ",
+              color: "#61727f",
+              format: "currency",
+              details: [
+                { key: "payrollSalary", label: "Оклад", format: "currency" },
+                { key: "payrollVacationPay", label: "Отпускные", format: "currency" },
+                { key: "payrollBonus", label: "Премия", format: "currency" },
+                { key: "payrollSalesBonus", label: "Бонус от продаж", format: "currency" },
+              ],
+            },
           ]}
-          ariaLabel="Динамика выручки и оплаты подрядчиков"
+          ariaLabel="Динамика выручки, ФОТ и оплаты подрядчиков"
         />
       </Panel>
     </>

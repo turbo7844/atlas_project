@@ -48,6 +48,7 @@ model Direction {
   sales           SalesMonthly[]
   contractorCosts ContractorCost[]
   cashFlows       CashFlowEntry[]
+  payrollMonthly  PayrollMonthly[]
 }
 
 model DataSource {
@@ -61,6 +62,8 @@ model DataSource {
   updatedAt           DateTime                @updatedAt
   syncRuns            SyncRun[]
   snapshots           MarketingPlanSnapshot[]
+  payrollMonthly      PayrollMonthly[]
+  payrollSyncState    PayrollSyncState?
 }
 
 model SyncRun {
@@ -210,6 +213,42 @@ model ContractorCost {
 
   @@unique([year, month, directionId])
   @@index([year, month])
+}
+
+model PayrollMonthly {
+  id          String     @id @default(cuid())
+  sourceId    String
+  year        Int
+  month       Int
+  directionId String
+  salary      Decimal    @db.Decimal(16, 2)
+  vacationPay Decimal    @db.Decimal(16, 2)
+  bonus       Decimal    @db.Decimal(16, 2)
+  salesBonus  Decimal    @db.Decimal(16, 2)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  source      DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  direction   Direction  @relation(fields: [directionId], references: [id])
+
+  @@unique([sourceId, year, month, directionId])
+  @@index([year, month])
+  @@index([directionId, year, month])
+}
+
+model PayrollSyncState {
+  id            String     @id @default(cuid())
+  sourceId      String     @unique
+  revision      Int        @default(0)
+  contentHash   String?
+  lastSuccessAt DateTime?
+  employeeCount Int        @default(0)
+  rowCount      Int        @default(0)
+  latestYear    Int?
+  latestMonth   Int?
+  lastError     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  source        DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
 
 model CashFlowEntry {

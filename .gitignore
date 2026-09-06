@@ -15,3 +15,5 @@ prisma/*.db-journal
 Thumbs.db
 .clasp.json
 .clasprc.json
+xlsx/
+xslx/
