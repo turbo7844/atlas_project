@@ -46,6 +46,15 @@ export function formatCompactCurrency(value: number | null | undefined) {
   return currency.format(value);
 }
 
+export function formatPercentagePoints(
+  value: number | null | undefined,
+) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${decimal.format(value * 100)} п. п.`;
+}
+
 export function formatDateTime(value: string | null | undefined) {
   if (!value) return "ещё не выполнялась";
   return new Intl.DateTimeFormat("ru-RU", {

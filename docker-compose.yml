@@ -33,6 +33,9 @@ services:
       MARKETING_ACTUAL_SHEET_NAME: ${MARKETING_ACTUAL_SHEET_NAME}
       PAYROLL_XLSX_DIRECTORY: /data/payroll
       PAYROLL_XLSX_FILENAME: ${PAYROLL_XLSX_FILENAME:-_03_Начисления_ЗП.xlsx}
+      FINTABLO_API_KEY: ${FINTABLO_API_KEY}
+      FINTABLO_API_BASE_URL: ${FINTABLO_API_BASE_URL:-https://api.fintablo.ru}
+      FINTABLO_SYNC_INTERVAL_MINUTES: ${FINTABLO_SYNC_INTERVAL_MINUTES:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -49,6 +52,9 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Astrakhan}
       PAYROLL_XLSX_DIRECTORY: /data/payroll
       PAYROLL_XLSX_FILENAME: ${PAYROLL_XLSX_FILENAME:-_03_Начисления_ЗП.xlsx}
+      FINTABLO_API_KEY: ${FINTABLO_API_KEY}
+      FINTABLO_API_BASE_URL: ${FINTABLO_API_BASE_URL:-https://api.fintablo.ru}
+      FINTABLO_SYNC_INTERVAL_MINUTES: ${FINTABLO_SYNC_INTERVAL_MINUTES:-5}
     volumes:
       - ${PAYROLL_XLSX_DIRECTORY:-./xlsx}:/data/payroll:ro
     depends_on:

@@ -2,6 +2,7 @@ import { SyncTrigger } from "@prisma/client";
 
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { synchronizeFintabloCashFlow } from "@/services/fintablo-sync";
 import { synchronizeMarketingPlan } from "@/services/marketing-plan-sync";
 import { synchronizePayroll } from "@/services/payroll-sync";
 import { watchPayrollXlsx } from "@/services/payroll-xlsx-source";
@@ -33,11 +34,26 @@ async function runPayroll() {
   }
 }
 
+async function runFintabloCashFlow() {
+  try {
+    const result = await synchronizeFintabloCashFlow(SyncTrigger.AUTOMATIC);
+    console.info(`[${result.finishedAt}] ${result.message}`);
+  } catch (error) {
+    console.error(
+      "Автоматическая синхронизация ДДС FinTablo завершилась ошибкой:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 async function main() {
   console.info(
     `Фоновая синхронизация запущена с интервалом ${env.syncIntervalMinutes} мин.`,
   );
-  await runMarketingPlan();
+  console.info(
+    `ДДС FinTablo обновляется каждые ${env.fintabloSyncIntervalMinutes} мин.`,
+  );
+  await Promise.all([runMarketingPlan(), runFintabloCashFlow()]);
 
   const payrollTask = createSerializedTask(runPayroll);
   await payrollTask.request();
@@ -54,16 +70,23 @@ async function main() {
     );
   }
 
-  const interval = setInterval(
+  const marketingInterval = setInterval(
     () => {
       if (active) void runMarketingPlan();
     },
     env.syncIntervalMinutes * 60_000,
   );
+  const fintabloInterval = setInterval(
+    () => {
+      if (active) void runFintabloCashFlow();
+    },
+    env.fintabloSyncIntervalMinutes * 60_000,
+  );
 
   const stop = async () => {
     active = false;
-    clearInterval(interval);
+    clearInterval(marketingInterval);
+    clearInterval(fintabloInterval);
     stopPayrollWatch();
     await payrollTask.stop();
     await prisma.$disconnect();

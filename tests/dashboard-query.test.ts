@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { parseDashboardQuery } from "@/lib/dashboard-query";
 
 describe("parseDashboardQuery", () => {
+  it("использует шесть направлений только для ДДС", () => {
+    const cashFlowQuery = parseDashboardQuery(
+      new URLSearchParams(),
+      "cash-flow",
+    );
+    expect(cashFlowQuery.directions).toHaveLength(6);
+    expect(cashFlowQuery.directions).toContain("general");
+
+    const revenueQuery = parseDashboardQuery(
+      new URLSearchParams({ directions: "branding,general" }),
+      "revenue",
+    );
+    expect(revenueQuery.directions).toEqual(["branding"]);
+  });
+
   it("возвращает безопасные значения по умолчанию", () => {
     const query = parseDashboardQuery(new URLSearchParams());
     expect(query.from).toBe("2026-01");

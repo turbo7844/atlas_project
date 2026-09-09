@@ -3,23 +3,23 @@
 import { useState } from "react";
 
 import {
-  DIRECTIONS,
   MONTHS,
-  type DirectionId,
   type Granularity,
 } from "@/lib/constants";
 
 const monthKey = (month: number) => `2026-${String(month).padStart(2, "0")}`;
 const monthNumber = (key: string) => Number(key.slice(-2));
 
-export function DirectionFilter({
+export function DirectionFilter<Id extends string>({
   value,
   onChange,
+  options,
 }: {
-  value: DirectionId[];
-  onChange: (directions: DirectionId[]) => void;
+  value: Id[];
+  onChange: (directions: Id[]) => void;
+  options: readonly { id: Id; name: string }[];
 }) {
-  const toggle = (directionId: DirectionId) => {
+  const toggle = (directionId: Id) => {
     onChange(
       value.includes(directionId)
         ? value.filter((item) => item !== directionId)
@@ -37,7 +37,7 @@ export function DirectionFilter({
       <div className="popover-panel directions-panel">
         <div className="popover-title">Направления</div>
         <div className="check-list">
-          {DIRECTIONS.map((direction) => (
+          {options.map((direction) => (
             <label key={direction.id}>
               <input
                 type="checkbox"
@@ -50,7 +50,7 @@ export function DirectionFilter({
           ))}
         </div>
         <div className="popover-actions">
-          <button type="button" onClick={() => onChange(DIRECTIONS.map((item) => item.id))}>
+          <button type="button" onClick={() => onChange(options.map((item) => item.id))}>
             Выбрать все
           </button>
           <button type="button" onClick={() => onChange([])}>

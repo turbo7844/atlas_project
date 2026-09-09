@@ -152,6 +152,7 @@ function CashFlowTable({ rows }: { rows: CashFlowRow[] }) {
             <th>Приход</th>
             <th>Расход</th>
             <th>Чистый поток</th>
+            <th>Рентабельность</th>
           </tr>
         </thead>
         <tbody>
@@ -161,6 +162,7 @@ function CashFlowTable({ rows }: { rows: CashFlowRow[] }) {
               <td>{formatValue(row.income, "currency")}</td>
               <td>{formatValue(row.expense, "currency")}</td>
               <td>{formatValue(row.net, "currency")}</td>
+              <td>{formatValue(row.profitability, "percent")}</td>
             </tr>
           ))}
         </tbody>

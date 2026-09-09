@@ -1,6 +1,6 @@
 "use client";
 
-import { formatValue } from "@/lib/format";
+import { formatPercentagePoints, formatValue } from "@/lib/format";
 import type { KpiValue } from "@/types/dashboard";
 
 export function KpiGrid({
@@ -28,7 +28,7 @@ export function KpiGrid({
           </div>
           <div className="kpi-value-row">
             <strong>{formatValue(kpi.value, kpi.format)}</strong>
-            <Delta value={kpi.delta} />
+            <Delta value={kpi.delta} mode={kpi.deltaMode} />
           </div>
           <div className="kpi-foot">
             {marketing ? (
@@ -54,14 +54,22 @@ export function KpiGrid({
   );
 }
 
-function Delta({ value }: { value: number | null | undefined }) {
+function Delta({
+  value,
+  mode = "relative",
+}: {
+  value: number | null | undefined;
+  mode?: "relative" | "percentage-points";
+}) {
   if (value === null || value === undefined) {
     return <span className="delta neutral">—</span>;
   }
   return (
     <span className={`delta ${value >= 0 ? "positive" : "negative"}`}>
       {value >= 0 ? "+" : "−"}
-      {formatValue(Math.abs(value), "percent")}
+      {mode === "percentage-points"
+        ? formatPercentagePoints(Math.abs(value))
+        : formatValue(Math.abs(value), "percent")}
     </span>
   );
 }

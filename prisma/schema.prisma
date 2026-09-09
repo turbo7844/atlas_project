@@ -34,11 +34,6 @@ enum MarketingActualSnapshotStatus {
   REJECTED
 }
 
-enum CashFlowKind {
-  INCOME
-  EXPENSE
-}
-
 model Direction {
   id              String               @id
   name            String               @unique
@@ -47,23 +42,26 @@ model Direction {
   marketingActual MarketingActual[]
   sales           SalesMonthly[]
   contractorCosts ContractorCost[]
-  cashFlows       CashFlowEntry[]
   payrollMonthly  PayrollMonthly[]
 }
 
 model DataSource {
-  id                  String                  @id @default(cuid())
-  key                 String                  @unique
-  name                String
-  type                String
-  enabled             Boolean                 @default(true)
-  syncIntervalMinutes Int                     @default(30)
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
-  syncRuns            SyncRun[]
-  snapshots           MarketingPlanSnapshot[]
-  payrollMonthly      PayrollMonthly[]
-  payrollSyncState    PayrollSyncState?
+  id                        String                     @id @default(cuid())
+  key                       String                     @unique
+  name                      String
+  type                      String
+  enabled                   Boolean                    @default(true)
+  syncIntervalMinutes       Int                        @default(30)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  syncRuns                  SyncRun[]
+  snapshots                 MarketingPlanSnapshot[]
+  payrollMonthly            PayrollMonthly[]
+  payrollSyncState          PayrollSyncState?
+  fintabloCategories        FintabloCategory[]
+  fintabloDirections        FintabloDirection[]
+  fintabloTransactions      FintabloTransaction[]
+  fintabloCashFlowSyncState FintabloCashFlowSyncState?
 }
 
 model SyncRun {
@@ -251,16 +249,83 @@ model PayrollSyncState {
   source        DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
 
-model CashFlowEntry {
-  id          String       @id @default(cuid())
-  year        Int
-  month       Int
-  directionId String
-  kind        CashFlowKind
-  category    String
-  amount      Decimal      @db.Decimal(16, 2)
-  direction   Direction    @relation(fields: [directionId], references: [id])
+model FintabloCategory {
+  id               String                @id
+  sourceId         String
+  externalId       String
+  parentExternalId String?
+  name             String
+  group            String
+  type             String?
+  pnlType          String?
+  description      String?
+  isBuiltIn        Boolean               @default(false)
+  raw              Json
+  source           DataSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  transactions     FintabloTransaction[]
 
-  @@unique([year, month, directionId, kind, category])
-  @@index([year, month])
+  @@unique([sourceId, externalId])
+  @@index([sourceId, group])
+}
+
+model FintabloDirection {
+  id               String                @id
+  sourceId         String
+  externalId       String
+  parentExternalId String?
+  name             String
+  description      String?
+  archived         Boolean               @default(false)
+  raw              Json
+  source           DataSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  transactions     FintabloTransaction[]
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, name])
+}
+
+model FintabloTransaction {
+  id                  String             @id
+  sourceId            String
+  externalId          String
+  parentExternalId    String?
+  categoryId          String?
+  categoryExternalId  String?
+  directionId         String?
+  directionExternalId String?
+  moneybagExternalId  String
+  moneybag2ExternalId String?
+  group               String
+  amount              Decimal            @db.Decimal(18, 2)
+  amount2             Decimal?           @db.Decimal(18, 2)
+  description         String?
+  date                DateTime           @db.Date
+  timestamp           BigInt?
+  isPlan              Boolean            @default(false)
+  raw                 Json
+  source              DataSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  category            FintabloCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  direction           FintabloDirection? @relation(fields: [directionId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, date])
+  @@index([sourceId, group, date])
+  @@index([categoryId])
+  @@index([directionId])
+  @@index([parentExternalId])
+}
+
+model FintabloCashFlowSyncState {
+  id            String     @id @default(cuid())
+  sourceId      String     @unique
+  revision      Int        @default(0)
+  contentHash   String?
+  lastSuccessAt DateTime?
+  rowCount      Int        @default(0)
+  maxDate       DateTime?  @db.Date
+  lastRequestId String?
+  lastError     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  source        DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }

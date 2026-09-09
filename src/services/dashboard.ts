@@ -1,6 +1,6 @@
 import type {
-  CashFlowEntry,
   ContractorCost,
+  FintabloTransaction,
   MarketingActual,
   MarketingPlanValue,
   PayrollMonthly,
@@ -8,8 +8,12 @@ import type {
 } from "@prisma/client";
 
 import {
+  CASH_FLOW_DIRECTIONS,
+  CASH_FLOW_GENERAL_DIRECTION,
+  DIRECTION_BY_SOURCE_NAME,
   DIRECTIONS,
   MONTHS,
+  type CashFlowDirectionId,
   type DashboardSection,
   type Granularity,
 } from "@/lib/constants";
@@ -545,98 +549,228 @@ async function revenueDashboard(
   };
 }
 
-function flowTotal(rows: CashFlowEntry[], kind: "INCOME" | "EXPENSE") {
+type CashFlowTransaction = FintabloTransaction & {
+  category: { externalId: string; name: string } | null;
+  direction: { externalId: string; name: string } | null;
+};
+
+function flowTotal(
+  rows: CashFlowTransaction[],
+  group: "income" | "outcome",
+) {
   return sum(
     rows
-      .filter((row) => row.kind === kind)
+      .filter((row) => row.group === group)
       .map((row) => row.amount.toNumber()),
   );
+}
+
+function cashFlowDirectionId(
+  row: CashFlowTransaction,
+): CashFlowDirectionId {
+  if (!row.direction) return CASH_FLOW_GENERAL_DIRECTION.id;
+  return (
+    DIRECTION_BY_SOURCE_NAME.get(row.direction.name) ??
+    CASH_FLOW_GENERAL_DIRECTION.id
+  );
+}
+
+function effectiveCashFlowTransactions(rows: CashFlowTransaction[]) {
+  const splitParents = new Set(
+    rows
+      .map((row) => row.parentExternalId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  return rows.filter(
+    (row) =>
+      !row.isPlan &&
+      row.group !== "transfer" &&
+      !splitParents.has(row.externalId),
+  );
+}
+
+function inMonths(row: CashFlowTransaction, months: number[]) {
+  return (
+    row.date.getUTCFullYear() === 2026 &&
+    months.includes(row.date.getUTCMonth() + 1)
+  );
+}
+
+function cashFlowCategory(row: CashFlowTransaction) {
+  return row.category
+    ? {
+        key: `category:${row.category.externalId}`,
+        label: row.category.name,
+      }
+    : { key: "category:unknown", label: "Без статьи" };
 }
 
 async function cashFlowDashboard(
   query: DashboardQuery,
 ): Promise<DashboardResponse> {
-  const months = selectedMonths(query).filter((month) => month <= 8);
+  const months = selectedMonths(query);
   const priorMonths = previousMonths(months);
-  const baseWhere = {
-    year: 2026,
-    directionId: { in: query.directions },
-  };
-  const [entries, previousEntries] = await Promise.all([
-    prisma.cashFlowEntry.findMany({ where: { ...baseWhere, month: { in: months } } }),
-    priorMonths.length
-      ? prisma.cashFlowEntry.findMany({ where: { ...baseWhere, month: { in: priorMonths } } })
-      : Promise.resolve([]),
+  const [storedEntries, syncState] = await Promise.all([
+    prisma.fintabloTransaction.findMany({
+      where: {
+        source: { key: "fintablo-cash-flow" },
+        isPlan: false,
+      },
+      include: {
+        category: { select: { externalId: true, name: true } },
+        direction: { select: { externalId: true, name: true } },
+      },
+    }),
+    prisma.fintabloCashFlowSyncState.findFirst({
+      where: { source: { key: "fintablo-cash-flow" } },
+    }),
   ]);
-  const income = flowTotal(entries, "INCOME");
-  const expense = flowTotal(entries, "EXPENSE");
-  const previousIncome = flowTotal(previousEntries, "INCOME");
-  const previousExpense = flowTotal(previousEntries, "EXPENSE");
+  const effectiveEntries = effectiveCashFlowTransactions(storedEntries);
+  const selectedDirections = new Set(query.directions);
+  const entries = effectiveEntries.filter(
+    (row) =>
+      inMonths(row, months) &&
+      selectedDirections.has(cashFlowDirectionId(row)),
+  );
+  const previousEntries = effectiveEntries.filter(
+    (row) =>
+      inMonths(row, priorMonths) &&
+      selectedDirections.has(cashFlowDirectionId(row)),
+  );
+  const income = flowTotal(entries, "income");
+  const expense = flowTotal(entries, "outcome");
+  const previousIncome = flowTotal(previousEntries, "income");
+  const previousExpense = flowTotal(previousEntries, "outcome");
+  const profitability = ratio(income - expense, income);
+  const previousProfitability = ratio(
+    previousIncome - previousExpense,
+    previousIncome,
+  );
+  const hasPrevious = previousEntries.length > 0;
 
   const kpis: KpiValue[] = [
-    metricKpi("income", "Приход", income, null, previousIncome || null, "currency"),
-    metricKpi("expense", "Расход", expense, null, previousExpense || null, "currency"),
+    metricKpi(
+      "income",
+      "Приход",
+      income,
+      null,
+      hasPrevious ? previousIncome : null,
+      "currency",
+    ),
+    metricKpi(
+      "expense",
+      "Расход",
+      expense,
+      null,
+      hasPrevious ? previousExpense : null,
+      "currency",
+    ),
     metricKpi(
       "net",
       "Чистый поток",
       income - expense,
       null,
-      previousIncome || previousExpense
-        ? previousIncome - previousExpense
-        : null,
+      hasPrevious ? previousIncome - previousExpense : null,
       "currency",
     ),
+    {
+      key: "profitability",
+      label: "Рентабельность",
+      value: profitability,
+      delta:
+        profitability !== null && previousProfitability !== null
+          ? profitability - previousProfitability
+          : null,
+      deltaMode: "percentage-points",
+      format: "percent",
+    },
   ];
 
+  const expenseByCategory = new Map<
+    string,
+    { key: string; label: string; value: number }
+  >();
+  for (const entry of entries.filter((row) => row.group === "outcome")) {
+    const category = cashFlowCategory(entry);
+    const current = expenseByCategory.get(category.key);
+    expenseByCategory.set(category.key, {
+      ...category,
+      value: (current?.value ?? 0) + entry.amount.toNumber(),
+    });
+  }
+  const sortedCategories = [...expenseByCategory.values()].sort(
+    (left, right) =>
+      right.value - left.value || left.label.localeCompare(right.label, "ru"),
+  );
+  const leadingCategories = sortedCategories.slice(0, 5);
+  const otherValue = sum(
+    sortedCategories.slice(5).map((category) => category.value),
+  );
+  const breakdown = [
+    ...leadingCategories,
+    ...(otherValue > 0
+      ? [{ key: "other", label: "Прочее", value: otherValue }]
+      : []),
+  ];
+
+  const leadingKeys = new Set(leadingCategories.map((item) => item.key));
   const buckets = periodBuckets(months, query.granularity);
   const series: SeriesPoint[] = buckets.map((bucket) => {
-    const periodEntries = entries.filter((row) =>
-      bucket.months.includes(row.month),
-    );
-    const periodIncome = flowTotal(periodEntries, "INCOME");
-    const periodExpense = flowTotal(periodEntries, "EXPENSE");
-    return {
+    const point: SeriesPoint = {
       key: bucket.key,
       label: bucket.label,
-      income: periodIncome,
-      expense: periodExpense,
-      net: periodIncome - periodExpense,
     };
+    for (const category of breakdown) point[category.key] = 0;
+    for (const entry of entries.filter(
+      (row) =>
+        row.group === "outcome" &&
+        bucket.months.includes(row.date.getUTCMonth() + 1),
+    )) {
+      const category = cashFlowCategory(entry);
+      const key = leadingKeys.has(category.key) ? category.key : "other";
+      if (key in point) {
+        point[key] = Number(point[key] ?? 0) + entry.amount.toNumber();
+      }
+    }
+    return point;
   });
 
-  const expenseByCategory = new Map<string, number>();
-  for (const entry of entries.filter((row) => row.kind === "EXPENSE")) {
-    expenseByCategory.set(
-      entry.category,
-      (expenseByCategory.get(entry.category) ?? 0) + entry.amount.toNumber(),
-    );
-  }
-
-  const rows: CashFlowRow[] = DIRECTIONS.filter((direction) =>
+  const rows: CashFlowRow[] = CASH_FLOW_DIRECTIONS.filter((direction) =>
     query.directions.includes(direction.id),
   ).map((direction) => {
     const directionEntries = entries.filter(
-      (entry) => entry.directionId === direction.id,
+      (entry) => cashFlowDirectionId(entry) === direction.id,
     );
-    const directionIncome = flowTotal(directionEntries, "INCOME");
-    const directionExpense = flowTotal(directionEntries, "EXPENSE");
+    const directionIncome = flowTotal(directionEntries, "income");
+    const directionExpense = flowTotal(directionEntries, "outcome");
     return {
       directionId: direction.id,
       direction: direction.name,
       income: directionIncome,
       expense: directionExpense,
       net: directionIncome - directionExpense,
+      profitability: ratio(
+        directionIncome - directionExpense,
+        directionIncome,
+      ),
     };
   });
 
   return {
-    meta: commonMeta("cash-flow", query),
+    meta: {
+      ...commonMeta("cash-flow", query, {
+        actualThrough:
+          syncState?.maxDate?.toISOString().slice(0, 10) ?? null,
+        lastSyncAt: syncState?.lastSuccessAt ?? null,
+      }),
+      notice: syncState?.lastSuccessAt
+        ? undefined
+        : "Фактический ДДС FinTablo ещё не синхронизирован.",
+    },
     kpis,
     series,
     rows,
-    breakdown: [...expenseByCategory.entries()]
-      .map(([key, value]) => ({ key, label: key, value }))
-      .sort((left, right) => right.value - left.value),
+    breakdown,
   };
 }
 

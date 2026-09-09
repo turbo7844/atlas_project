@@ -1,8 +1,4 @@
-import {
-  CashFlowKind,
-  Prisma,
-  PrismaClient,
-} from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -123,6 +119,31 @@ async function seed() {
     },
   });
 
+  const fintabloSource = await prisma.dataSource.upsert({
+    where: { key: "fintablo-cash-flow" },
+    update: {
+      name: "Фактический ДДС FinTablo",
+      type: "FINTABLO_API",
+      enabled: true,
+      syncIntervalMinutes: Number(
+        process.env.FINTABLO_SYNC_INTERVAL_MINUTES ?? 5,
+      ),
+    },
+    create: {
+      key: "fintablo-cash-flow",
+      name: "Фактический ДДС FinTablo",
+      type: "FINTABLO_API",
+      syncIntervalMinutes: Number(
+        process.env.FINTABLO_SYNC_INTERVAL_MINUTES ?? 5,
+      ),
+    },
+  });
+  await prisma.fintabloCashFlowSyncState.upsert({
+    where: { sourceId: fintabloSource.id },
+    update: {},
+    create: { sourceId: fintabloSource.id },
+  });
+
   for (let month = 1; month <= 8; month += 1) {
     for (const [directionIndex, direction] of DIRECTIONS.entries()) {
       const directionDrift = 1 + (directionIndex - 2) * 0.012;
@@ -139,11 +160,6 @@ async function seed() {
             conversionFactors[month - 1] *
             (1 + directionIndex * 0.006),
         ),
-      );
-      const budget = money(
-        visits *
-          direction.cpc *
-          (0.96 + month * 0.007 + directionIndex * 0.004),
       );
       const meetings = Math.min(leads, Math.round(leads * (0.62 + directionIndex * 0.01)));
       const proposals = Math.min(meetings, Math.round(meetings * 0.72));
@@ -206,38 +222,6 @@ async function seed() {
         },
       });
 
-      const cashEntries = [
-        { kind: CashFlowKind.INCOME, category: "Поступления от клиентов", amount: revenue },
-        { kind: CashFlowKind.EXPENSE, category: "Подрядчики", amount: contractorAmount },
-        { kind: CashFlowKind.EXPENSE, category: "Маркетинг", amount: budget },
-        { kind: CashFlowKind.EXPENSE, category: "Команда", amount: money(revenue.toNumber() * 0.12) },
-        { kind: CashFlowKind.EXPENSE, category: "Сервисы", amount: money(revenue.toNumber() * 0.045) },
-        { kind: CashFlowKind.EXPENSE, category: "Налоги", amount: money(revenue.toNumber() * 0.06) },
-        { kind: CashFlowKind.EXPENSE, category: "Прочее", amount: money(revenue.toNumber() * 0.025) },
-      ];
-
-      for (const entry of cashEntries) {
-        await prisma.cashFlowEntry.upsert({
-          where: {
-            year_month_directionId_kind_category: {
-              year: 2026,
-              month,
-              directionId: direction.id,
-              kind: entry.kind,
-              category: entry.category,
-            },
-          },
-          update: { amount: entry.amount },
-          create: {
-            year: 2026,
-            month,
-            directionId: direction.id,
-            kind: entry.kind,
-            category: entry.category,
-            amount: entry.amount,
-          },
-        });
-      }
     }
   }
 
