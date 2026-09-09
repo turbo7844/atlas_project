@@ -21,7 +21,10 @@ export async function GET(
       );
     }
 
-    const query = parseDashboardQuery(new URL(request.url).searchParams);
+    const query = parseDashboardQuery(
+      new URL(request.url).searchParams,
+      section,
+    );
     const dashboard = await getDashboard(section, query);
     return NextResponse.json(dashboard);
   } catch (error) {

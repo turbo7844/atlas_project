@@ -19,7 +19,9 @@ import {
 import { KpiGrid } from "@/components/dashboard/kpis";
 import { SectionContent } from "@/components/dashboard/section-content";
 import {
+  CASH_FLOW_DIRECTIONS,
   DIRECTIONS,
+  type CashFlowDirectionId,
   type DashboardSection,
   type DirectionId,
   type Granularity,
@@ -62,6 +64,7 @@ const tabs: Array<{
 type PersistedState = {
   section: DashboardSection;
   directions: DirectionId[];
+  cashFlowDirections: CashFlowDirectionId[];
   from: string;
   to: string;
   granularity: Granularity;
@@ -99,13 +102,59 @@ type PayrollSyncStatus = {
   error: string | null;
 };
 
+type FintabloSyncStatus = {
+  configured: boolean;
+  status: string;
+  lastSuccessAt: string | null;
+  rowCount: number;
+  maxDate: string | null;
+  revision: number;
+  error: string | null;
+};
+
 const defaultState: PersistedState = {
   section: "marketing",
   directions: DIRECTIONS.map((direction) => direction.id),
+  cashFlowDirections: CASH_FLOW_DIRECTIONS.map(
+    (direction) => direction.id,
+  ),
   from: "2026-01",
   to: "2026-08",
   granularity: "month",
 };
+
+const syncStatusLabels: Record<string, string> = {
+  NOT_STARTED: "ещё не запускалась",
+  RUNNING: "выполняется",
+  SUCCESS: "успешно",
+  FAILED: "ошибка",
+  SKIPPED: "уже выполняется",
+};
+
+const directionIds = new Set(DIRECTIONS.map((direction) => direction.id));
+const cashFlowDirectionIds = new Set(
+  CASH_FLOW_DIRECTIONS.map((direction) => direction.id),
+);
+
+function restoreState(value: string): PersistedState {
+  const saved = JSON.parse(value) as Partial<PersistedState>;
+  const directions = Array.isArray(saved.directions)
+    ? saved.directions.filter((id): id is DirectionId =>
+        directionIds.has(id as DirectionId),
+      )
+    : defaultState.directions;
+  const cashFlowDirections = Array.isArray(saved.cashFlowDirections)
+    ? saved.cashFlowDirections.filter((id): id is CashFlowDirectionId =>
+        cashFlowDirectionIds.has(id as CashFlowDirectionId),
+      )
+    : defaultState.cashFlowDirections;
+  return {
+    ...defaultState,
+    ...saved,
+    directions,
+    cashFlowDirections,
+  };
+}
 
 export function DashboardApp() {
   const [state, setState] = useState<PersistedState>(defaultState);
@@ -121,11 +170,17 @@ export function DashboardApp() {
     useState<MarketingActualSyncStatus | null>(null);
   const [payrollSyncStatus, setPayrollSyncStatus] =
     useState<PayrollSyncStatus | null>(null);
+  const [fintabloSyncStatus, setFintabloSyncStatus] =
+    useState<FintabloSyncStatus | null>(null);
   const stateRef = useRef(state);
   const actualRevisionRef = useRef(0);
   const payrollRevisionRef = useRef(0);
+  const fintabloRevisionRef = useRef(0);
   const quietRefreshRef = useRef<DashboardSection | null>(null);
-
+  const currentDirections =
+    state.section === "cash-flow"
+      ? state.cashFlowDirections
+      : state.directions;
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -134,7 +189,7 @@ export function DashboardApp() {
     try {
       const saved = localStorage.getItem("atlas-dashboard-filters");
       if (saved) {
-        setState({ ...defaultState, ...(JSON.parse(saved) as PersistedState) });
+        setState(restoreState(saved));
       }
     } catch {
       localStorage.removeItem("atlas-dashboard-filters");
@@ -168,9 +223,25 @@ export function DashboardApp() {
     }
   }, []);
 
+  const loadFintabloSyncStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/sync/fintablo-cash-flow", {
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const status = (await response.json()) as FintabloSyncStatus;
+        setFintabloSyncStatus(status);
+        fintabloRevisionRef.current = status.revision;
+      }
+    } catch {
+      // Последний успешный снимок остаётся доступен при ошибке статуса.
+    }
+  }, []);
+
   useEffect(() => {
     void loadSyncStatus();
-  }, [loadSyncStatus]);
+    void loadFintabloSyncStatus();
+  }, [loadFintabloSyncStatus, loadSyncStatus]);
 
   useEffect(() => {
     if (!ready) return;
@@ -269,7 +340,59 @@ export function DashboardApp() {
   }, [ready]);
 
   useEffect(() => {
-    if (!ready || state.directions.length === 0) {
+    if (!ready) return;
+
+    let cancelled = false;
+    let events: EventSource | null = null;
+    const handleUpdate = (event: MessageEvent<string>) => {
+      try {
+        const status = JSON.parse(event.data) as FintabloSyncStatus;
+        setFintabloSyncStatus(status);
+        if (status.revision <= fintabloRevisionRef.current) return;
+        fintabloRevisionRef.current = status.revision;
+        if (stateRef.current.section === "cash-flow") {
+          quietRefreshRef.current = "cash-flow";
+          setRefreshToken((value) => value + 1);
+        }
+      } catch {
+        // Повреждённое SSE-событие будет исправлено следующей проверкой.
+      }
+    };
+
+    fetch("/api/sync/fintablo-cash-flow", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            "Не удалось получить состояние синхронизации ДДС FinTablo.",
+          );
+        }
+        return (await response.json()) as FintabloSyncStatus;
+      })
+      .then((status) => {
+        if (cancelled) return;
+        setFintabloSyncStatus(status);
+        fintabloRevisionRef.current = status.revision;
+        events = new EventSource(
+          `/api/updates/fintablo-cash-flow?revision=${status.revision}`,
+        );
+        events.addEventListener("fintablo-cash-flow", handleUpdate);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        events = new EventSource(
+          "/api/updates/fintablo-cash-flow?revision=0",
+        );
+        events.addEventListener("fintablo-cash-flow", handleUpdate);
+      });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready || currentDirections.length === 0) {
       setData(null);
       setLoading(false);
       setError(null);
@@ -281,7 +404,7 @@ export function DashboardApp() {
       from: state.from,
       to: state.to,
       granularity: state.granularity,
-      directions: state.directions.join(","),
+      directions: currentDirections.join(","),
     });
     const quiet = quietRefreshRef.current === state.section;
     quietRefreshRef.current = null;
@@ -324,7 +447,7 @@ export function DashboardApp() {
       });
 
     return () => controller.abort();
-  }, [ready, refreshToken, state]);
+  }, [currentDirections, ready, refreshToken, state]);
 
   const currentTab = useMemo(
     () => tabs.find((tab) => tab.id === state.section) ?? tabs[0],
@@ -339,25 +462,47 @@ export function DashboardApp() {
   const synchronize = async () => {
     setSyncing(true);
     setToast(null);
+    const cashFlowSync = state.section === "cash-flow";
     try {
-      const response = await fetch("/api/sync/marketing-plan", {
+      const response = await fetch(
+        cashFlowSync
+          ? "/api/sync/fintablo-cash-flow"
+          : "/api/sync/marketing-plan",
+        {
         method: "POST",
-      });
+        },
+      );
       const payload = (await response.json()) as {
         message?: string;
         error?: string;
       };
       if (!response.ok && response.status !== 202) {
-        throw new Error(payload.error ?? "Синхронизация завершилась ошибкой.");
+        throw new Error(
+          payload.error ??
+            (cashFlowSync
+              ? "Синхронизация ДДС FinTablo завершилась ошибкой."
+              : "Синхронизация завершилась ошибкой."),
+        );
       }
-      setToast(payload.message ?? "Синхронизация завершена.");
-      await loadSyncStatus();
+      setToast(
+        payload.message ??
+          (cashFlowSync
+            ? "Синхронизация ДДС FinTablo завершена."
+            : "Синхронизация завершена."),
+      );
+      if (cashFlowSync) {
+        await loadFintabloSyncStatus();
+      } else {
+        await loadSyncStatus();
+      }
       setRefreshToken((value) => value + 1);
     } catch (syncError) {
       setToast(
         syncError instanceof Error
           ? syncError.message
-          : "Синхронизация завершилась ошибкой.",
+          : cashFlowSync
+            ? "Синхронизация ДДС FinTablo завершилась ошибкой."
+            : "Синхронизация завершилась ошибкой.",
       );
     } finally {
       setSyncing(false);
@@ -367,6 +512,7 @@ export function DashboardApp() {
   const onlyFutureFact =
     state.section !== "marketing" &&
     state.section !== "revenue" &&
+    state.section !== "cash-flow" &&
     state.from > "2026-08";
   const dataNotice = [
     data?.meta.notice,
@@ -381,6 +527,12 @@ export function DashboardApp() {
       : null,
     state.section === "revenue" && payrollSyncStatus?.error
       ? payrollSyncStatus.error
+      : null,
+    state.section === "cash-flow" && data?.meta.lastSyncAt
+      ? `ДДС FinTablo обновлён ${formatDateTime(data.meta.lastSyncAt)}.`
+      : null,
+    state.section === "cash-flow" && fintabloSyncStatus?.error
+      ? fintabloSyncStatus.error
       : null,
   ]
     .filter(Boolean)
@@ -398,20 +550,45 @@ export function DashboardApp() {
         </div>
         <div className="sync-area">
           <div className="sync-copy">
-            <span>Маркетинговый план</span>
+            <span>
+              {state.section === "cash-flow"
+                ? "ДДС FinTablo"
+                : "Маркетинговый план"}
+            </span>
             <small>
-              Синхронизация{" "}
-              {formatDateTime(
-                syncStatus?.snapshot?.createdAt ??
-                  syncStatus?.lastRun?.finishedAt,
+              {state.section === "cash-flow" ? (
+                <>
+                  Синхронизация{" "}
+                  {formatDateTime(fintabloSyncStatus?.lastSuccessAt)}
+                  {" · "}
+                  {syncStatusLabels[
+                    fintabloSyncStatus?.status ?? "NOT_STARTED"
+                  ] ?? "неизвестный статус"}
+                </>
+              ) : (
+                <>
+                  Синхронизация{" "}
+                  {formatDateTime(
+                    syncStatus?.snapshot?.createdAt ??
+                      syncStatus?.lastRun?.finishedAt,
+                  )}
+                </>
               )}
             </small>
           </div>
           <button
             type="button"
             className="icon-button sync-button"
-            aria-label="Синхронизировать маркетинговый план"
-            data-tooltip="Синхронизировать данные"
+            aria-label={
+              state.section === "cash-flow"
+                ? "Синхронизировать ДДС FinTablo"
+                : "Синхронизировать маркетинговый план"
+            }
+            data-tooltip={
+              state.section === "cash-flow"
+                ? "Обновить ДДС из FinTablo"
+                : "Синхронизировать данные"
+            }
             disabled={syncing}
             onClick={() => void synchronize()}
           >
@@ -436,10 +613,21 @@ export function DashboardApp() {
       </nav>
 
       <section className="toolbar" aria-label="Фильтры дашборда">
-        <DirectionFilter
-          value={state.directions}
-          onChange={(directions) => update("directions", directions)}
-        />
+        {state.section === "cash-flow" ? (
+          <DirectionFilter
+            value={state.cashFlowDirections}
+            options={CASH_FLOW_DIRECTIONS}
+            onChange={(cashFlowDirections) =>
+              update("cashFlowDirections", cashFlowDirections)
+            }
+          />
+        ) : (
+          <DirectionFilter
+            value={state.directions}
+            options={DIRECTIONS}
+            onChange={(directions) => update("directions", directions)}
+          />
+        )}
         <PeriodPicker
           from={state.from}
           to={state.to}
@@ -462,7 +650,7 @@ export function DashboardApp() {
         {dataNotice ? <p className="data-notice">{dataNotice}</p> : null}
       </section>
 
-      {state.directions.length === 0 ? (
+      {currentDirections.length === 0 ? (
         <EmptyState
           title="Выберите хотя бы одно направление"
           text="Данные появятся после выбора направления в фильтре."

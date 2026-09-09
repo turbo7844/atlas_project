@@ -1,5 +1,7 @@
 import type {
   DashboardSection,
+  CashFlowDirectionId,
+  DashboardDirectionId,
   DirectionId,
   Granularity,
 } from "@/lib/constants";
@@ -14,7 +16,7 @@ export interface DashboardQuery {
   from: string;
   to: string;
   granularity: Granularity;
-  directions: DirectionId[];
+  directions: DashboardDirectionId[];
 }
 
 export interface KpiValue {
@@ -24,6 +26,7 @@ export interface KpiValue {
   plan?: number | null;
   delta?: number | null;
   completion?: number | null;
+  deltaMode?: "relative" | "percentage-points";
   format: ValueFormat;
   hint?: string;
 }
@@ -39,7 +42,7 @@ export interface DashboardMeta {
   from: string;
   to: string;
   granularity: Granularity;
-  directions: DirectionId[];
+  directions: DashboardDirectionId[];
   actualThrough: string | null;
   planThrough: string;
   notice?: string;
@@ -79,11 +82,12 @@ export interface RevenueRow {
 }
 
 export interface CashFlowRow {
-  directionId: DirectionId;
+  directionId: CashFlowDirectionId;
   direction: string;
   income: number;
   expense: number;
   net: number;
+  profitability: number | null;
 }
 
 export interface SalesRow {

@@ -163,15 +163,15 @@ function CashFlowFeatures({ data }: { data: DashboardResponse }) {
       <Panel eyebrow="Структура" title="Расходы">
         <DonutChart data={data.breakdown ?? []} />
       </Panel>
-      <Panel eyebrow="Динамика" title="Денежный поток">
+      <Panel eyebrow="Динамика" title="Расходы по статьям">
         <LineChart
           data={data.series}
-          metrics={[
-            { key: "income", label: "Приход", color: "#1f5b8f", format: "currency" },
-            { key: "expense", label: "Расход", color: "#d3a86f", format: "currency" },
-            { key: "net", label: "Чистый поток", color: "#61727f", format: "currency" },
-          ]}
-          ariaLabel="Динамика прихода, расхода и чистого потока"
+          metrics={(data.breakdown ?? []).map((item) => ({
+            key: item.key,
+            label: item.label,
+            format: "currency",
+          }))}
+          ariaLabel="Динамика расходов по крупнейшим статьям"
         />
       </Panel>
     </>
