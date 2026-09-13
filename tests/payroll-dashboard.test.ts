@@ -85,6 +85,7 @@ const mocks = vi.hoisted(() => ({
     contractorCost: { findMany: vi.fn() },
     payrollMonthly: { findMany: vi.fn() },
     payrollSyncState: { findFirst: vi.fn() },
+    bitrixSalesSyncState: { findFirst: vi.fn() },
   },
 }));
 
@@ -109,6 +110,7 @@ describe("ФОТ в разделе выручки", () => {
       latestMonth: 9,
       lastSuccessAt: new Date("2026-08-31T10:00:00.000Z"),
     });
+    mocks.prisma.bitrixSalesSyncState.findFirst.mockResolvedValue(null);
   });
 
   it("учитывает фильтр направления и прошлый месячный период", async () => {

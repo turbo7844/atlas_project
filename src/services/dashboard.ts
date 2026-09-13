@@ -429,6 +429,7 @@ async function revenueDashboard(
     previousCosts,
     previousPayroll,
     payrollSyncState,
+    bitrixSyncState,
   ] = await Promise.all([
     prisma.salesMonthly.findMany({ where: { ...baseWhere, month: { in: months } } }),
     prisma.contractorCost.findMany({ where: { ...baseWhere, month: { in: months } } }),
@@ -444,6 +445,9 @@ async function revenueDashboard(
       : Promise.resolve([]),
     prisma.payrollSyncState.findFirst({
       where: { source: { key: "local-payroll-xlsx" } },
+    }),
+    prisma.bitrixSalesSyncState.findFirst({
+      where: { source: { key: "bitrix24-sales" } },
     }),
   ]);
 
@@ -478,10 +482,13 @@ async function revenueDashboard(
     payrollSyncState?.latestYear && payrollSyncState.latestMonth
       ? `${payrollSyncState.latestYear}-${String(payrollSyncState.latestMonth).padStart(2, "0")}`
       : null;
-  const actualThrough =
-    latestPayrollPeriod && latestPayrollPeriod > "2026-08"
-      ? latestPayrollPeriod
-      : "2026-08";
+  const revenueThrough = bitrixSyncState?.maxRevenueDate
+    ?.toISOString()
+    .slice(0, 10);
+  const actualThrough = [latestPayrollPeriod, revenueThrough]
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 
   const buckets = periodBuckets(months, query.granularity);
   const series: SeriesPoint[] = buckets.map((bucket) => {
@@ -536,11 +543,21 @@ async function revenueDashboard(
     meta: {
       ...commonMeta("revenue", query, {
         actualThrough,
-        lastSyncAt: payrollSyncState?.lastSuccessAt ?? null,
+        lastSyncAt:
+          bitrixSyncState?.lastSuccessAt ??
+          payrollSyncState?.lastSuccessAt ??
+          null,
       }),
-      notice: payrollSyncState?.lastSuccessAt
-        ? undefined
-        : "Начисления ФОТ ещё не синхронизированы.",
+      notice: [
+        bitrixSyncState?.lastSuccessAt
+          ? "Bitrix24 обновляет только выручку; ФОТ и подрядчики берутся из отдельных источников Atlas."
+          : "Выручка Bitrix24 ещё не синхронизирована.",
+        payrollSyncState?.lastSuccessAt
+          ? null
+          : "Начисления ФОТ ещё не синхронизированы.",
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
     },
     kpis,
     series,
@@ -788,17 +805,20 @@ function salesTotals(rows: SalesMonthly[]) {
 async function salesDashboard(
   query: DashboardQuery,
 ): Promise<DashboardResponse> {
-  const months = selectedMonths(query).filter((month) => month <= 8);
+  const months = selectedMonths(query);
   const priorMonths = previousMonths(months);
   const baseWhere = {
     year: 2026,
     directionId: { in: query.directions },
   };
-  const [sales, previousSales] = await Promise.all([
+  const [sales, previousSales, syncState] = await Promise.all([
     prisma.salesMonthly.findMany({ where: { ...baseWhere, month: { in: months } } }),
     priorMonths.length
       ? prisma.salesMonthly.findMany({ where: { ...baseWhere, month: { in: priorMonths } } })
       : Promise.resolve([]),
+    prisma.bitrixSalesSyncState.findFirst({
+      where: { source: { key: "bitrix24-sales" } },
+    }),
   ]);
   const totals = salesTotals(sales);
   const previous = salesTotals(previousSales);
@@ -844,7 +864,16 @@ async function salesDashboard(
   });
 
   return {
-    meta: commonMeta("sales", query),
+    meta: {
+      ...commonMeta("sales", query, {
+        actualThrough:
+          syncState?.maxDealDate?.toISOString().slice(0, 10) ?? null,
+        lastSyncAt: syncState?.lastSuccessAt ?? null,
+      }),
+      notice: syncState?.lastSuccessAt
+        ? "Воронка построена по дате создания и текущей достигнутой стадии сделки. Выручка распределена по дате закрытия."
+        : "Продажи Bitrix24 ещё не синхронизированы.",
+    },
     kpis,
     series,
     rows,

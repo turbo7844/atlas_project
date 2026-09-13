@@ -33,6 +33,11 @@ export const env = {
   fintabloApiKey: process.env.FINTABLO_API_KEY ?? "",
   fintabloApiBaseUrl:
     process.env.FINTABLO_API_BASE_URL ?? "https://api.fintablo.ru",
+  bitrix24WebhookUrl: process.env.BITRIX24_WEBHOOK_URL ?? "",
+  bitrix24SyncIntervalMinutes: Math.max(
+    1,
+    integer(process.env.BITRIX24_SYNC_INTERVAL_MINUTES, 15),
+  ),
   fintabloSyncIntervalMinutes: Math.max(
     1,
     integer(process.env.FINTABLO_SYNC_INTERVAL_MINUTES, 5),

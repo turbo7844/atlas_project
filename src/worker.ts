@@ -2,6 +2,7 @@ import { SyncTrigger } from "@prisma/client";
 
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { synchronizeBitrixSales } from "@/services/bitrix24-sales-sync";
 import { synchronizeFintabloCashFlow } from "@/services/fintablo-sync";
 import { synchronizeMarketingPlan } from "@/services/marketing-plan-sync";
 import { synchronizePayroll } from "@/services/payroll-sync";
@@ -46,6 +47,19 @@ async function runFintabloCashFlow() {
   }
 }
 
+async function runBitrixSales() {
+  if (!env.bitrix24WebhookUrl) return;
+  try {
+    const result = await synchronizeBitrixSales(SyncTrigger.AUTOMATIC);
+    console.info(`[${result.finishedAt}] ${result.message}`);
+  } catch (error) {
+    console.error(
+      "Автоматическая синхронизация Bitrix24 завершилась ошибкой:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 async function main() {
   console.info(
     `Фоновая синхронизация запущена с интервалом ${env.syncIntervalMinutes} мин.`,
@@ -53,7 +67,16 @@ async function main() {
   console.info(
     `ДДС FinTablo обновляется каждые ${env.fintabloSyncIntervalMinutes} мин.`,
   );
-  await Promise.all([runMarketingPlan(), runFintabloCashFlow()]);
+  if (env.bitrix24WebhookUrl) {
+    console.info(
+      `Продажи Bitrix24 обновляются каждые ${env.bitrix24SyncIntervalMinutes} мин.`,
+    );
+  }
+  await Promise.all([
+    runMarketingPlan(),
+    runFintabloCashFlow(),
+    runBitrixSales(),
+  ]);
 
   const payrollTask = createSerializedTask(runPayroll);
   await payrollTask.request();
@@ -82,11 +105,18 @@ async function main() {
     },
     env.fintabloSyncIntervalMinutes * 60_000,
   );
+  const bitrixInterval = setInterval(
+    () => {
+      if (active) void runBitrixSales();
+    },
+    env.bitrix24SyncIntervalMinutes * 60_000,
+  );
 
   const stop = async () => {
     active = false;
     clearInterval(marketingInterval);
     clearInterval(fintabloInterval);
+    clearInterval(bitrixInterval);
     stopPayrollWatch();
     await payrollTask.stop();
     await prisma.$disconnect();

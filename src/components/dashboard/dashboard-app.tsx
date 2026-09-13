@@ -17,6 +17,7 @@ import {
   SyncIcon,
 } from "@/components/dashboard/controls";
 import { KpiGrid } from "@/components/dashboard/kpis";
+import { IntegrationSettings } from "@/components/dashboard/integration-settings";
 import { SectionContent } from "@/components/dashboard/section-content";
 import {
   CASH_FLOW_DIRECTIONS,
@@ -112,6 +113,20 @@ type FintabloSyncStatus = {
   error: string | null;
 };
 
+type BitrixSyncStatus = {
+  configured: boolean;
+  status: string;
+  revision: number;
+  lastSuccessAt: string | null;
+  dealCount: number;
+  funnelCount: number;
+  ignoredDealCount: number;
+  minDate: string | null;
+  maxDate: string | null;
+  maxRevenueDate: string | null;
+  error: string | null;
+};
+
 const defaultState: PersistedState = {
   section: "marketing",
   directions: DIRECTIONS.map((direction) => direction.id),
@@ -172,10 +187,13 @@ export function DashboardApp() {
     useState<PayrollSyncStatus | null>(null);
   const [fintabloSyncStatus, setFintabloSyncStatus] =
     useState<FintabloSyncStatus | null>(null);
+  const [bitrixSyncStatus, setBitrixSyncStatus] =
+    useState<BitrixSyncStatus | null>(null);
   const stateRef = useRef(state);
   const actualRevisionRef = useRef(0);
   const payrollRevisionRef = useRef(0);
   const fintabloRevisionRef = useRef(0);
+  const bitrixRevisionRef = useRef(0);
   const quietRefreshRef = useRef<DashboardSection | null>(null);
   const currentDirections =
     state.section === "cash-flow"
@@ -238,10 +256,26 @@ export function DashboardApp() {
     }
   }, []);
 
+  const loadBitrixSyncStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/sync/bitrix24-sales", {
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const status = (await response.json()) as BitrixSyncStatus;
+        setBitrixSyncStatus(status);
+        bitrixRevisionRef.current = status.revision;
+      }
+    } catch {
+      // Последний успешный снимок остаётся доступен при ошибке статуса.
+    }
+  }, []);
+
   useEffect(() => {
     void loadSyncStatus();
     void loadFintabloSyncStatus();
-  }, [loadFintabloSyncStatus, loadSyncStatus]);
+    void loadBitrixSyncStatus();
+  }, [loadBitrixSyncStatus, loadFintabloSyncStatus, loadSyncStatus]);
 
   useEffect(() => {
     if (!ready) return;
@@ -283,6 +317,57 @@ export function DashboardApp() {
         if (cancelled) return;
         events = new EventSource("/api/updates/marketing-actual?revision=0");
         events.addEventListener("marketing-actual", handleUpdate);
+      });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let cancelled = false;
+    let events: EventSource | null = null;
+    const handleUpdate = (event: MessageEvent<string>) => {
+      try {
+        const status = JSON.parse(event.data) as BitrixSyncStatus;
+        setBitrixSyncStatus(status);
+        if (status.revision <= bitrixRevisionRef.current) return;
+        bitrixRevisionRef.current = status.revision;
+        if (
+          stateRef.current.section === "sales" ||
+          stateRef.current.section === "revenue"
+        ) {
+          quietRefreshRef.current = stateRef.current.section;
+          setRefreshToken((value) => value + 1);
+        }
+      } catch {
+        // Повреждённое SSE-событие будет исправлено следующей проверкой.
+      }
+    };
+
+    fetch("/api/sync/bitrix24-sales", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось получить состояние синхронизации Bitrix24.");
+        }
+        return (await response.json()) as BitrixSyncStatus;
+      })
+      .then((status) => {
+        if (cancelled) return;
+        setBitrixSyncStatus(status);
+        bitrixRevisionRef.current = status.revision;
+        events = new EventSource(
+          `/api/updates/bitrix24-sales?revision=${status.revision}`,
+        );
+        events.addEventListener("bitrix24-sales", handleUpdate);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        events = new EventSource("/api/updates/bitrix24-sales?revision=0");
+        events.addEventListener("bitrix24-sales", handleUpdate);
       });
 
     return () => {
@@ -463,10 +548,14 @@ export function DashboardApp() {
     setSyncing(true);
     setToast(null);
     const cashFlowSync = state.section === "cash-flow";
+    const bitrixSync =
+      state.section === "sales" || state.section === "revenue";
     try {
       const response = await fetch(
         cashFlowSync
           ? "/api/sync/fintablo-cash-flow"
+          : bitrixSync
+            ? "/api/sync/bitrix24-sales"
           : "/api/sync/marketing-plan",
         {
         method: "POST",
@@ -481,6 +570,8 @@ export function DashboardApp() {
           payload.error ??
             (cashFlowSync
               ? "Синхронизация ДДС FinTablo завершилась ошибкой."
+              : bitrixSync
+                ? "Синхронизация Bitrix24 завершилась ошибкой."
               : "Синхронизация завершилась ошибкой."),
         );
       }
@@ -488,10 +579,14 @@ export function DashboardApp() {
         payload.message ??
           (cashFlowSync
             ? "Синхронизация ДДС FinTablo завершена."
+            : bitrixSync
+              ? "Синхронизация Bitrix24 завершена."
             : "Синхронизация завершена."),
       );
       if (cashFlowSync) {
         await loadFintabloSyncStatus();
+      } else if (bitrixSync) {
+        await loadBitrixSyncStatus();
       } else {
         await loadSyncStatus();
       }
@@ -502,6 +597,8 @@ export function DashboardApp() {
           ? syncError.message
           : cashFlowSync
             ? "Синхронизация ДДС FinTablo завершилась ошибкой."
+            : bitrixSync
+              ? "Синхронизация Bitrix24 завершилась ошибкой."
             : "Синхронизация завершилась ошибкой.",
       );
     } finally {
@@ -509,11 +606,11 @@ export function DashboardApp() {
     }
   };
 
+  const bitrixSalesThrough = bitrixSyncStatus?.maxDate?.slice(0, 7);
   const onlyFutureFact =
-    state.section !== "marketing" &&
-    state.section !== "revenue" &&
-    state.section !== "cash-flow" &&
-    state.from > "2026-08";
+    state.section === "sales" &&
+    Boolean(bitrixSalesThrough) &&
+    state.from > bitrixSalesThrough!;
   const dataNotice = [
     data?.meta.notice,
     state.section === "marketing" && data?.meta.lastSyncAt
@@ -522,8 +619,11 @@ export function DashboardApp() {
     state.section === "marketing" && actualSyncStatus?.error
       ? actualSyncStatus.error
       : null,
-    state.section === "revenue" && data?.meta.lastSyncAt
-      ? `ФОТ обновлён ${formatDateTime(data.meta.lastSyncAt)}.`
+    state.section === "revenue" && bitrixSyncStatus?.lastSuccessAt
+      ? `Выручка Bitrix24 обновлена ${formatDateTime(bitrixSyncStatus.lastSuccessAt)}.`
+      : null,
+    state.section === "revenue" && payrollSyncStatus?.lastSuccessAt
+      ? `ФОТ обновлён ${formatDateTime(payrollSyncStatus.lastSuccessAt)}.`
       : null,
     state.section === "revenue" && payrollSyncStatus?.error
       ? payrollSyncStatus.error
@@ -533,6 +633,13 @@ export function DashboardApp() {
       : null,
     state.section === "cash-flow" && fintabloSyncStatus?.error
       ? fintabloSyncStatus.error
+      : null,
+    state.section === "sales" && bitrixSyncStatus?.lastSuccessAt
+      ? `Bitrix24 обновлён ${formatDateTime(bitrixSyncStatus.lastSuccessAt)}.`
+      : null,
+    (state.section === "sales" || state.section === "revenue") &&
+    bitrixSyncStatus?.error
+      ? bitrixSyncStatus.error
       : null,
   ]
     .filter(Boolean)
@@ -553,6 +660,10 @@ export function DashboardApp() {
             <span>
               {state.section === "cash-flow"
                 ? "ДДС FinTablo"
+                : state.section === "sales"
+                  ? "Продажи Bitrix24"
+                  : state.section === "revenue"
+                    ? "Выручка Bitrix24"
                 : "Маркетинговый план"}
             </span>
             <small>
@@ -563,6 +674,15 @@ export function DashboardApp() {
                   {" · "}
                   {syncStatusLabels[
                     fintabloSyncStatus?.status ?? "NOT_STARTED"
+                  ] ?? "неизвестный статус"}
+                </>
+              ) : state.section === "sales" || state.section === "revenue" ? (
+                <>
+                  Синхронизация{" "}
+                  {formatDateTime(bitrixSyncStatus?.lastSuccessAt)}
+                  {" · "}
+                  {syncStatusLabels[
+                    bitrixSyncStatus?.status ?? "NOT_STARTED"
                   ] ?? "неизвестный статус"}
                 </>
               ) : (
@@ -582,11 +702,15 @@ export function DashboardApp() {
             aria-label={
               state.section === "cash-flow"
                 ? "Синхронизировать ДДС FinTablo"
+                : state.section === "sales" || state.section === "revenue"
+                  ? "Синхронизировать продажи Bitrix24"
                 : "Синхронизировать маркетинговый план"
             }
             data-tooltip={
               state.section === "cash-flow"
                 ? "Обновить ДДС из FinTablo"
+                : state.section === "sales" || state.section === "revenue"
+                  ? "Обновить данные из Bitrix24"
                 : "Синхронизировать данные"
             }
             disabled={syncing}
@@ -594,6 +718,7 @@ export function DashboardApp() {
           >
             <SyncIcon spinning={syncing} />
           </button>
+          <IntegrationSettings />
         </div>
       </header>
 
@@ -658,7 +783,7 @@ export function DashboardApp() {
       ) : onlyFutureFact ? (
         <EmptyState
           title="Фактических данных за этот период ещё нет"
-          text="Факт доступен с января по август 2026 года. План будущих месяцев находится во вкладке «Маркетинг»."
+          text={`Воронка доступна по ${bitrixSalesThrough}. Выручка по оплаченным сделкам может быть доступна позднее во вкладке «Выручка и ФОТ».`}
         />
       ) : loading ? (
         <LoadingState />

@@ -58,6 +58,7 @@ model DataSource {
   snapshots                 MarketingPlanSnapshot[]
   payrollMonthly            PayrollMonthly[]
   payrollSyncState          PayrollSyncState?
+  bitrixSalesSyncState      BitrixSalesSyncState?
   fintabloCategories        FintabloCategory[]
   fintabloDirections        FintabloDirection[]
   fintabloTransactions      FintabloTransaction[]
@@ -247,6 +248,24 @@ model PayrollSyncState {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   source        DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+}
+
+model BitrixSalesSyncState {
+  id               String     @id @default(cuid())
+  sourceId         String     @unique
+  revision         Int        @default(0)
+  contentHash      String?
+  lastSuccessAt    DateTime?
+  dealCount        Int        @default(0)
+  funnelCount      Int        @default(0)
+  ignoredDealCount Int        @default(0)
+  minDealDate      DateTime?  @db.Date
+  maxDealDate      DateTime?  @db.Date
+  maxRevenueDate   DateTime?  @db.Date
+  lastError        String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  source           DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
 
 model FintabloCategory {

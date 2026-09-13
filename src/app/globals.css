@@ -153,6 +153,241 @@ button:disabled {
   color: var(--surface);
 }
 
+.settings-backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(32, 43, 51, 0.48);
+}
+
+.settings-dialog {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+}
+
+.settings-dialog-header {
+  min-height: 94px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.settings-dialog-header .eyebrow {
+  margin-bottom: 5px;
+}
+
+.settings-dialog-header h2 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.integration-form {
+  padding: 25px 24px 0;
+}
+
+.integration-heading,
+.integration-heading > div {
+  display: flex;
+  align-items: center;
+}
+
+.integration-heading {
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.integration-heading > div {
+  gap: 12px;
+}
+
+.integration-index {
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.integration-heading h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.integration-state {
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.integration-state.configured {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.integration-description {
+  margin: 16px 0 19px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.configured-portal {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--blue);
+  background: var(--blue-pale);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.settings-field {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-field > span {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.settings-field input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  outline: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.settings-field input:focus {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue-pale);
+  outline-offset: 1px;
+}
+
+.settings-field input::placeholder {
+  color: var(--line-strong);
+}
+
+.settings-note {
+  margin: 10px 0 18px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.settings-note code {
+  margin-left: 4px;
+  color: var(--ink);
+  font-family: "Montserrat";
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.connection-result {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 14px;
+  border-left: 3px solid var(--warm);
+  background: var(--warm-pale);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.connection-result.success {
+  border-left-color: var(--blue);
+  background: var(--blue-pale);
+}
+
+.connection-result strong {
+  font-size: 10px;
+}
+
+.connection-result dl {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin: 7px 0 0;
+  border-top: 1px solid rgba(31, 91, 143, 0.28);
+  border-left: 1px solid rgba(31, 91, 143, 0.28);
+}
+
+.connection-result dl > div {
+  padding: 9px;
+  border-right: 1px solid rgba(31, 91, 143, 0.28);
+  border-bottom: 1px solid rgba(31, 91, 143, 0.28);
+}
+
+.connection-result dt {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.connection-result dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.connection-result small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 24px -24px 0;
+  border-top: 1px solid var(--ink);
+}
+
+.settings-actions button {
+  min-height: 52px;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.secondary-button {
+  background: transparent;
+  color: var(--muted);
+}
+
+.primary-button {
+  border-left: 1px solid var(--ink) !important;
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.settings-actions button:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--surface);
+}
+
 [data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;

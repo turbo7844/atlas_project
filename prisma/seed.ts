@@ -176,34 +176,36 @@ async function seed() {
           (direction.contractorShare + ((month + directionIndex) % 3 - 1) * 0.012),
       );
 
-      await prisma.salesMonthly.upsert({
-        where: {
-          year_month_directionId: {
+      if (!process.env.BITRIX24_WEBHOOK_URL) {
+        await prisma.salesMonthly.upsert({
+          where: {
+            year_month_directionId: {
+              year: 2026,
+              month,
+              directionId: direction.id,
+            },
+          },
+          update: {
+            leads,
+            meetings,
+            proposals,
+            contracts,
+            payments,
+            revenue,
+          },
+          create: {
             year: 2026,
             month,
             directionId: direction.id,
+            leads,
+            meetings,
+            proposals,
+            contracts,
+            payments,
+            revenue,
           },
-        },
-        update: {
-          leads,
-          meetings,
-          proposals,
-          contracts,
-          payments,
-          revenue,
-        },
-        create: {
-          year: 2026,
-          month,
-          directionId: direction.id,
-          leads,
-          meetings,
-          proposals,
-          contracts,
-          payments,
-          revenue,
-        },
-      });
+        });
+      }
 
       await prisma.contractorCost.upsert({
         where: {

@@ -36,7 +36,12 @@ export function formatValue(
 }
 
 export function formatCompactCurrency(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  if (Math.abs(value) >= 1_000_000_000) {
+    return `${decimal.format(value / 1_000_000_000)} млрд ₽`;
+  }
   if (Math.abs(value) >= 1_000_000) {
     return `${decimal.format(value / 1_000_000)} млн ₽`;
   }

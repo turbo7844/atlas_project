@@ -1,6 +1,10 @@
 "use client";
 
-import { formatPercentagePoints, formatValue } from "@/lib/format";
+import {
+  formatCompactCurrency,
+  formatPercentagePoints,
+  formatValue,
+} from "@/lib/format";
 import type { KpiValue } from "@/types/dashboard";
 
 export function KpiGrid({
@@ -27,7 +31,17 @@ export function KpiGrid({
             ) : null}
           </div>
           <div className="kpi-value-row">
-            <strong>{formatValue(kpi.value, kpi.format)}</strong>
+            <strong
+              title={
+                kpi.format === "currency"
+                  ? formatValue(kpi.value, "currency")
+                  : undefined
+              }
+            >
+              {kpi.format === "currency"
+                ? formatCompactCurrency(kpi.value)
+                : formatValue(kpi.value, kpi.format)}
+            </strong>
             <Delta value={kpi.delta} mode={kpi.deltaMode} />
           </div>
           <div className="kpi-foot">
