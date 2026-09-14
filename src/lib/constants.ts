@@ -41,4 +41,9 @@ export type CashFlowDirectionId =
   | typeof CASH_FLOW_GENERAL_DIRECTION.id;
 export type DashboardDirectionId = CashFlowDirectionId;
 export type Granularity = "month" | "quarter" | "year";
-export type DashboardSection = "marketing" | "revenue" | "cash-flow" | "sales";
+export type DashboardSection =
+  | "marketing"
+  | "revenue"
+  | "cash-flow"
+  | "sales"
+  | "dashboards";

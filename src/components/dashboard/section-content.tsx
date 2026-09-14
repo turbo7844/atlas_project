@@ -8,6 +8,7 @@ import {
 } from "@/components/dashboard/charts";
 import { DashboardTable } from "@/components/dashboard/tables";
 import { formatValue } from "@/lib/format";
+import type { DashboardSection } from "@/lib/constants";
 import type {
   DashboardResponse,
   RevenueRow,
@@ -17,9 +18,11 @@ export function SectionContent({
   section,
   data,
 }: {
-  section: "marketing" | "revenue" | "cash-flow" | "sales";
+  section: DashboardSection;
   data: DashboardResponse;
 }) {
+  if (section === "dashboards") return null;
+
   return (
     <>
       <div className="feature-grid">

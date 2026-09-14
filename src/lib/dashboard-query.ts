@@ -13,6 +13,7 @@ const sections = new Set<DashboardSection>([
   "revenue",
   "cash-flow",
   "sales",
+  "dashboards",
 ]);
 const granularities = new Set<Granularity>(["month", "quarter", "year"]);
 const validDirectionIds = new Set<string>(

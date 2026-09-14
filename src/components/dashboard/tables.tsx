@@ -1,6 +1,7 @@
 "use client";
 
 import { formatValue } from "@/lib/format";
+import type { DashboardSection } from "@/lib/constants";
 import type {
   CashFlowRow,
   DashboardResponse,
@@ -13,9 +14,11 @@ export function DashboardTable({
   section,
   data,
 }: {
-  section: "marketing" | "revenue" | "cash-flow" | "sales";
+  section: DashboardSection;
   data: DashboardResponse;
 }) {
+  if (section === "dashboards") return null;
+
   if (section === "marketing") {
     return <MarketingTable rows={data.rows as MarketingRow[]} />;
   }

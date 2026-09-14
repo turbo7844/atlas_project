@@ -18,6 +18,7 @@ import {
 } from "@/components/dashboard/controls";
 import { KpiGrid } from "@/components/dashboard/kpis";
 import { IntegrationSettings } from "@/components/dashboard/integration-settings";
+import { ManagementDashboard } from "@/components/dashboard/management-dashboard";
 import { SectionContent } from "@/components/dashboard/section-content";
 import {
   CASH_FLOW_DIRECTIONS,
@@ -59,6 +60,13 @@ const tabs: Array<{
     label: "Продажи",
     title: "Продажи",
     description: "Воронка и динамика коммерческих этапов",
+  },
+  {
+    id: "dashboards",
+    label: "Дашборды",
+    title: "Дашборды",
+    description:
+      "Эффективность маркетинга, продаж и превращения выручки в деньги",
   },
 ];
 
@@ -288,8 +296,11 @@ export function DashboardApp() {
         setActualSyncStatus(status);
         if (status.revision <= actualRevisionRef.current) return;
         actualRevisionRef.current = status.revision;
-        if (stateRef.current.section === "marketing") {
-          quietRefreshRef.current = "marketing";
+        if (
+          stateRef.current.section === "marketing" ||
+          stateRef.current.section === "dashboards"
+        ) {
+          quietRefreshRef.current = stateRef.current.section;
           setRefreshToken((value) => value + 1);
         }
       } catch {
@@ -338,7 +349,8 @@ export function DashboardApp() {
         bitrixRevisionRef.current = status.revision;
         if (
           stateRef.current.section === "sales" ||
-          stateRef.current.section === "revenue"
+          stateRef.current.section === "revenue" ||
+          stateRef.current.section === "dashboards"
         ) {
           quietRefreshRef.current = stateRef.current.section;
           setRefreshToken((value) => value + 1);
@@ -435,8 +447,11 @@ export function DashboardApp() {
         setFintabloSyncStatus(status);
         if (status.revision <= fintabloRevisionRef.current) return;
         fintabloRevisionRef.current = status.revision;
-        if (stateRef.current.section === "cash-flow") {
-          quietRefreshRef.current = "cash-flow";
+        if (
+          stateRef.current.section === "cash-flow" ||
+          stateRef.current.section === "dashboards"
+        ) {
+          quietRefreshRef.current = stateRef.current.section;
           setRefreshToken((value) => value + 1);
         }
       } catch {
@@ -550,7 +565,33 @@ export function DashboardApp() {
     const cashFlowSync = state.section === "cash-flow";
     const bitrixSync =
       state.section === "sales" || state.section === "revenue";
+    const dashboardSync = state.section === "dashboards";
     try {
+      if (dashboardSync) {
+        const responses = await Promise.all([
+          fetch("/api/sync/bitrix24-sales", { method: "POST" }),
+          fetch("/api/sync/fintablo-cash-flow", { method: "POST" }),
+        ]);
+        const payloads = (await Promise.all(
+          responses.map((response) => response.json()),
+        )) as Array<{ message?: string; error?: string }>;
+        const failedIndex = responses.findIndex(
+          (response) => !response.ok && response.status !== 202,
+        );
+        if (failedIndex >= 0) {
+          throw new Error(
+            payloads[failedIndex]?.error ??
+              "Обновление источников дашборда завершилось ошибкой.",
+          );
+        }
+        await Promise.all([
+          loadBitrixSyncStatus(),
+          loadFintabloSyncStatus(),
+        ]);
+        setToast("Обновление источников дашборда запущено.");
+        setRefreshToken((value) => value + 1);
+        return;
+      }
       const response = await fetch(
         cashFlowSync
           ? "/api/sync/fintablo-cash-flow"
@@ -597,7 +638,9 @@ export function DashboardApp() {
           ? syncError.message
           : cashFlowSync
             ? "Синхронизация ДДС FinTablo завершилась ошибкой."
-            : bitrixSync
+            : dashboardSync
+              ? "Обновление источников дашборда завершилось ошибкой."
+              : bitrixSync
               ? "Синхронизация Bitrix24 завершилась ошибкой."
             : "Синхронизация завершилась ошибкой.",
       );
@@ -660,6 +703,8 @@ export function DashboardApp() {
             <span>
               {state.section === "cash-flow"
                 ? "ДДС FinTablo"
+                : state.section === "dashboards"
+                  ? "Сводные данные"
                 : state.section === "sales"
                   ? "Продажи Bitrix24"
                   : state.section === "revenue"
@@ -667,7 +712,9 @@ export function DashboardApp() {
                 : "Маркетинговый план"}
             </span>
             <small>
-              {state.section === "cash-flow" ? (
+              {state.section === "dashboards" ? (
+                <>Обновлено {formatDateTime(data?.meta.lastSyncAt)}</>
+              ) : state.section === "cash-flow" ? (
                 <>
                   Синхронизация{" "}
                   {formatDateTime(fintabloSyncStatus?.lastSuccessAt)}
@@ -702,6 +749,8 @@ export function DashboardApp() {
             aria-label={
               state.section === "cash-flow"
                 ? "Синхронизировать ДДС FinTablo"
+                : state.section === "dashboards"
+                  ? "Обновить источники дашборда"
                 : state.section === "sales" || state.section === "revenue"
                   ? "Синхронизировать продажи Bitrix24"
                 : "Синхронизировать маркетинговый план"
@@ -709,6 +758,8 @@ export function DashboardApp() {
             data-tooltip={
               state.section === "cash-flow"
                 ? "Обновить ДДС из FinTablo"
+                : state.section === "dashboards"
+                  ? "Обновить данные Bitrix24 и FinTablo"
                 : state.section === "sales" || state.section === "revenue"
                   ? "Обновить данные из Bitrix24"
                 : "Синхронизировать данные"
@@ -718,7 +769,11 @@ export function DashboardApp() {
           >
             <SyncIcon spinning={syncing} />
           </button>
-          <IntegrationSettings />
+          <IntegrationSettings
+            onDashboardNormsSaved={() =>
+              setRefreshToken((value) => value + 1)
+            }
+          />
         </div>
       </header>
 
@@ -798,10 +853,19 @@ export function DashboardApp() {
           }
         />
       ) : data ? (
-        <>
-          <KpiGrid kpis={data.kpis} marketing={state.section === "marketing"} />
-          <SectionContent section={state.section} data={data} />
-        </>
+        state.section === "dashboards" &&
+        data.managementMetrics &&
+        data.managementInputs ? (
+          <ManagementDashboard
+            metrics={data.managementMetrics}
+            inputs={data.managementInputs}
+          />
+        ) : (
+          <>
+            <KpiGrid kpis={data.kpis} marketing={state.section === "marketing"} />
+            <SectionContent section={state.section} data={data} />
+          </>
+        )
       ) : null}
 
       <footer className="app-footer">

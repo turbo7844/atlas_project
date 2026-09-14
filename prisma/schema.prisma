@@ -348,3 +348,12 @@ model FintabloCashFlowSyncState {
   updatedAt     DateTime   @updatedAt
   source        DataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
+
+model DashboardNorm {
+  id                 String   @id @default("default")
+  roas               Decimal  @default(12) @db.Decimal(8, 2)
+  cac                Decimal  @default(42000) @db.Decimal(16, 2)
+  grossProfitPerLead Decimal  @default(20000) @db.Decimal(16, 2)
+  cashConversion     Decimal  @default(0.9) @db.Decimal(8, 6)
+  updatedAt          DateTime @updatedAt
+}

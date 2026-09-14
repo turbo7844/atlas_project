@@ -20,12 +20,14 @@ import {
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { calculateMarketingMetrics } from "@/services/marketing-metrics";
+import { getDashboardNorms } from "@/services/dashboard-norms";
 import type {
   CashFlowRow,
   DashboardQuery,
   DashboardResponse,
   KpiValue,
   MarketingRow,
+  ManagementMetric,
   RevenueRow,
   SalesRow,
   SeriesPoint,
@@ -887,6 +889,218 @@ async function salesDashboard(
   };
 }
 
+const FINTABLO_VAT_DIVISOR = 1.22;
+
+function managementMetric(
+  input: Omit<ManagementMetric, "normDelta" | "scaleMax">,
+): ManagementMetric {
+  const normDelta =
+    input.value === null
+      ? null
+      : input.normDeltaMode === "percentage-points"
+        ? input.value - input.norm
+        : input.normDirection === "lower"
+          ? (input.norm - input.value) / input.norm
+          : (input.value - input.norm) / input.norm;
+  return {
+    ...input,
+    normDelta,
+    scaleMax: Math.max(
+      input.norm * 1.4,
+      input.value === null ? 0 : input.value * 1.2,
+      1,
+    ),
+  };
+}
+
+async function managementDashboard(
+  query: DashboardQuery,
+): Promise<DashboardResponse> {
+  const months = selectedMonths(query);
+  const baseWhere = {
+    year: 2026,
+    directionId: { in: query.directions },
+    month: { in: months },
+  };
+  const from = new Date(Date.UTC(2026, (months[0] ?? 1) - 1, 1));
+  const to = new Date(
+    Date.UTC(2026, months[months.length - 1] ?? 1, 1),
+  );
+  const [
+    marketing,
+    sales,
+    costs,
+    storedEntries,
+    marketingSyncState,
+    bitrixSyncState,
+    fintabloSyncState,
+    norms,
+  ] = await Promise.all([
+    prisma.marketingActual.findMany({
+      where: {
+        directionId: { in: query.directions },
+        date: { gte: from, lt: to },
+      },
+    }),
+    prisma.salesMonthly.findMany({ where: baseWhere }),
+    prisma.contractorCost.findMany({ where: baseWhere }),
+    prisma.fintabloTransaction.findMany({
+      where: {
+        source: { key: "fintablo-cash-flow" },
+        isPlan: false,
+        date: { gte: from, lt: to },
+      },
+      include: {
+        category: { select: { externalId: true, name: true } },
+        direction: { select: { externalId: true, name: true } },
+      },
+    }),
+    prisma.marketingActualSyncState.findFirst({
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.bitrixSalesSyncState.findFirst({
+      where: { source: { key: "bitrix24-sales" } },
+    }),
+    prisma.fintabloCashFlowSyncState.findFirst({
+      where: { source: { key: "fintablo-cash-flow" } },
+    }),
+    getDashboardNorms(),
+  ]);
+
+  const selectedDirections = new Set(query.directions);
+  const allBusinessDirectionsSelected = DIRECTIONS.every((direction) =>
+    selectedDirections.has(direction.id),
+  );
+  const cashEntries = effectiveCashFlowTransactions(storedEntries).filter(
+    (row) => {
+      const directionId = cashFlowDirectionId(row);
+      return (
+        selectedDirections.has(directionId) ||
+        (allBusinessDirectionsSelected &&
+          directionId === CASH_FLOW_GENERAL_DIRECTION.id)
+      );
+    },
+  );
+  const marketingBudget = sum(
+    marketing.map((row) => row.budget.toNumber()),
+  );
+  const marketingLeads = sum(marketing.map((row) => row.leads));
+  const revenue = salesRevenue(sales);
+  const payments = sum(sales.map((row) => row.payments));
+  const grossProfit = revenue - contractorTotal(costs);
+  const receiptsWithVat = flowTotal(cashEntries, "income");
+  const receiptsWithoutVat = receiptsWithVat / FINTABLO_VAT_DIVISOR;
+
+  const managementMetrics: ManagementMetric[] = [
+    managementMetric({
+      key: "roas",
+      label: "ROAS",
+      value:
+        sales.length && marketing.length
+          ? ratio(revenue, marketingBudget)
+          : null,
+      norm: norms.roas,
+      normDirection: "higher",
+      normDeltaMode: "relative",
+      format: "decimal",
+      hint:
+        "Выручка / фактический рекламный бюджет. Показывает, сколько рублей выручки принёс один рубль рекламы.",
+      source: "Выручка и ФОТ + Маркетинг",
+    }),
+    managementMetric({
+      key: "cac",
+      label: "CAC",
+      value:
+        sales.length && marketing.length
+          ? ratio(marketingBudget, payments)
+          : null,
+      norm: norms.cac,
+      normDirection: "lower",
+      normDeltaMode: "relative",
+      format: "currency",
+      hint:
+        "Фактический рекламный бюджет / число фактически полученных оплат. Чем ниже значение, тем лучше.",
+      source: "Маркетинг + Продажи",
+    }),
+    managementMetric({
+      key: "gross-profit-per-lead",
+      label: "Валовая прибыль на 1 лида",
+      value:
+        sales.length && marketing.length
+          ? ratio(grossProfit, marketingLeads)
+          : null,
+      norm: norms.grossProfitPerLead,
+      normDirection: "higher",
+      normDeltaMode: "relative",
+      format: "currency",
+      hint:
+        "(Выручка − затраты на подрядчиков) / фактически полученные лиды.",
+      source: "Выручка и ФОТ + Маркетинг",
+    }),
+    managementMetric({
+      key: "cash-conversion",
+      label: "Cash Conversion",
+      value:
+        sales.length && cashEntries.length
+          ? ratio(receiptsWithoutVat, revenue)
+          : null,
+      norm: norms.cashConversion,
+      normDirection: "higher",
+      normDeltaMode: "percentage-points",
+      format: "percent",
+      hint:
+        "(Поступления FinTablo / 1,22) / выручка × 100%. Коррекция НДС применяется только в этом показателе.",
+      source: "ДДС + Выручка и ФОТ",
+    }),
+  ];
+
+  const coverageDates = [
+    marketingSyncState?.maxDate,
+    bitrixSyncState?.maxRevenueDate,
+    fintabloSyncState?.maxDate,
+  ]
+    .filter((value): value is Date => Boolean(value))
+    .sort((left, right) => left.getTime() - right.getTime());
+  const syncDates = [
+    marketingSyncState?.lastSuccessAt,
+    bitrixSyncState?.lastSuccessAt,
+    fintabloSyncState?.lastSuccessAt,
+  ]
+    .filter((value): value is Date => Boolean(value))
+    .sort((left, right) => right.getTime() - left.getTime());
+  const missingData = [
+    marketing.length ? null : "Маркетинговый факт за период отсутствует.",
+    sales.length ? null : "Выручка и оплаты за период отсутствуют.",
+    cashEntries.length ? null : "Поступления FinTablo за период отсутствуют.",
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    meta: {
+      ...commonMeta("dashboards", query, {
+        actualThrough: coverageDates[0]?.toISOString().slice(0, 10) ?? null,
+        lastSyncAt: syncDates[0] ?? null,
+      }),
+      notice: [
+        "Cash Conversion рассчитан без НДС: поступления FinTablo разделены на 1,22.",
+        ...missingData,
+      ].join(" "),
+    },
+    kpis: [],
+    series: [],
+    rows: [],
+    managementMetrics,
+    managementInputs: {
+      revenue,
+      marketingBudget,
+      payments,
+      grossProfit,
+      marketingLeads,
+      receiptsWithVat,
+      receiptsWithoutVat,
+    },
+  };
+}
+
 export async function getDashboard(
   section: DashboardSection,
   query: DashboardQuery,
@@ -900,6 +1114,8 @@ export async function getDashboard(
       return cashFlowDashboard(query);
     case "sales":
       return salesDashboard(query);
+    case "dashboards":
+      return managementDashboard(query);
   }
 }
 

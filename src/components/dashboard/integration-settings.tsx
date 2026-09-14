@@ -19,36 +19,109 @@ type ConnectionResult = {
   dealCount: number;
 };
 
-export function IntegrationSettings() {
+type SettingsSection = "integrations" | "norms";
+
+type DashboardNorms = {
+  roas: number;
+  cac: number;
+  grossProfitPerLead: number;
+  cashConversion: number;
+  updatedAt: string | null;
+};
+
+const defaultNorms: DashboardNorms = {
+  roas: 12,
+  cac: 42_000,
+  grossProfitPerLead: 20_000,
+  cashConversion: 0.9,
+  updatedAt: null,
+};
+
+export function IntegrationSettings({
+  onDashboardNormsSaved,
+}: {
+  onDashboardNormsSaved?: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [section, setSection] = useState<SettingsSection>("integrations");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [norms, setNorms] = useState(defaultNorms);
+  const [savingNorms, setSavingNorms] = useState(false);
+  const [normError, setNormError] = useState<string | null>(null);
+  const [normSaved, setNormSaved] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !checking) setOpen(false);
+      if (event.key === "Escape" && !checking && !savingNorms) setOpen(false);
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [checking, open]);
+  }, [checking, open, savingNorms]);
 
   const showSettings = async () => {
     setOpen(true);
     setConnection(null);
     setError(null);
+    setNormError(null);
+    setNormSaved(false);
     try {
-      const response = await fetch("/api/integrations/bitrix24", {
-        cache: "no-store",
-      });
-      if (response.ok) {
-        setStatus((await response.json()) as IntegrationStatus);
+      const [integrationResponse, normsResponse] = await Promise.all([
+        fetch("/api/integrations/bitrix24", { cache: "no-store" }),
+        fetch("/api/settings/dashboard-norms", { cache: "no-store" }),
+      ]);
+      if (integrationResponse.ok) {
+        setStatus((await integrationResponse.json()) as IntegrationStatus);
+      }
+      if (normsResponse.ok) {
+        setNorms((await normsResponse.json()) as DashboardNorms);
       }
     } catch {
       setStatus(null);
+    }
+  };
+
+  const saveNorms = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingNorms(true);
+    setNormError(null);
+    setNormSaved(false);
+    try {
+      const response = await fetch("/api/settings/dashboard-norms", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roas: norms.roas,
+          cac: norms.cac,
+          grossProfitPerLead: norms.grossProfitPerLead,
+          cashConversion: norms.cashConversion,
+        }),
+      });
+      const payload = (await response.json()) as
+        | DashboardNorms
+        | { error?: string };
+      if (!response.ok || !("roas" in payload)) {
+        throw new Error(
+          "error" in payload && payload.error
+            ? payload.error
+            : "Не удалось сохранить нормативы.",
+        );
+      }
+      setNorms(payload);
+      setNormSaved(true);
+      onDashboardNormsSaved?.();
+    } catch (saveError) {
+      setNormError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Не удалось сохранить нормативы.",
+      );
+    } finally {
+      setSavingNorms(false);
     }
   };
 
@@ -100,7 +173,7 @@ export function IntegrationSettings() {
         className="icon-button settings-button"
         aria-label="Открыть настройки"
         aria-haspopup="dialog"
-        data-tooltip="Настройки интеграций"
+        data-tooltip="Настройки и нормативы"
         onClick={() => void showSettings()}
       >
         <SettingsIcon />
@@ -110,7 +183,11 @@ export function IntegrationSettings() {
         <div
           className="settings-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !checking) {
+            if (
+              event.target === event.currentTarget &&
+              !checking &&
+              !savingNorms
+            ) {
               setOpen(false);
             }
           }}
@@ -123,21 +200,39 @@ export function IntegrationSettings() {
           >
             <header className="settings-dialog-header">
               <div>
-                <span className="eyebrow">Atlas · Интеграции</span>
+                <span className="eyebrow">Atlas · Конфигурация</span>
                 <h2 id="settings-title">Настройки</h2>
               </div>
               <button
                 type="button"
                 className="icon-button"
                 aria-label="Закрыть настройки"
-                disabled={checking}
+                disabled={checking || savingNorms}
                 onClick={() => setOpen(false)}
               >
                 <CloseIcon />
               </button>
             </header>
 
-            <form className="integration-form" onSubmit={checkConnection}>
+            <nav className="settings-section-tabs" aria-label="Разделы настроек">
+              <button
+                type="button"
+                className={section === "integrations" ? "active" : ""}
+                onClick={() => setSection("integrations")}
+              >
+                Интеграции
+              </button>
+              <button
+                type="button"
+                className={section === "norms" ? "active" : ""}
+                onClick={() => setSection("norms")}
+              >
+                Нормативы
+              </button>
+            </nav>
+
+            {section === "integrations" ? (
+              <form className="integration-form" onSubmit={checkConnection}>
               <div className="integration-heading">
                 <div>
                   <span className="integration-index">01</span>
@@ -234,7 +329,160 @@ export function IntegrationSettings() {
                   {checking ? "Проверяем…" : "Проверить связь"}
                 </button>
               </div>
-            </form>
+              </form>
+            ) : (
+              <form className="integration-form" onSubmit={saveNorms}>
+                <div className="integration-heading">
+                  <div>
+                    <span className="integration-index">02</span>
+                    <h3>Нормативы дашборда</h3>
+                  </div>
+                  <span className="integration-state configured">
+                    Стартовые значения
+                  </span>
+                </div>
+
+                <p className="integration-description">
+                  Факт меняется вместе с периодом и направлениями. Для CAC
+                  меньше нормы — лучше; для остальных показателей — больше.
+                </p>
+
+                <div className="norm-settings-list">
+                  <label className="norm-settings-row">
+                    <span>
+                      <strong>ROAS</strong>
+                      <small>Минимальная окупаемость рекламных затрат</small>
+                    </span>
+                    <span className="norm-input">
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="1000"
+                        step="0.1"
+                        required
+                        value={norms.roas}
+                        onChange={(event) =>
+                          setNorms((current) => ({
+                            ...current,
+                            roas: event.target.valueAsNumber,
+                          }))
+                        }
+                      />
+                      <b>×</b>
+                    </span>
+                  </label>
+
+                  <label className="norm-settings-row">
+                    <span>
+                      <strong>CAC</strong>
+                      <small>Максимальная стоимость одной полученной оплаты</small>
+                    </span>
+                    <span className="norm-input">
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000000000"
+                        step="1"
+                        required
+                        value={norms.cac}
+                        onChange={(event) =>
+                          setNorms((current) => ({
+                            ...current,
+                            cac: event.target.valueAsNumber,
+                          }))
+                        }
+                      />
+                      <b>₽</b>
+                    </span>
+                  </label>
+
+                  <label className="norm-settings-row">
+                    <span>
+                      <strong>Валовая прибыль на 1 лида</strong>
+                      <small>Минимальная прибыль после оплаты подрядчиков</small>
+                    </span>
+                    <span className="norm-input">
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000000000"
+                        step="1"
+                        required
+                        value={norms.grossProfitPerLead}
+                        onChange={(event) =>
+                          setNorms((current) => ({
+                            ...current,
+                            grossProfitPerLead: event.target.valueAsNumber,
+                          }))
+                        }
+                      />
+                      <b>₽</b>
+                    </span>
+                  </label>
+
+                  <label className="norm-settings-row">
+                    <span>
+                      <strong>Cash Conversion</strong>
+                      <small>Минимальная доля выручки, поступившая деньгами</small>
+                    </span>
+                    <span className="norm-input">
+                      <input
+                        type="number"
+                        min="1"
+                        max="200"
+                        step="1"
+                        required
+                        value={Number((norms.cashConversion * 100).toFixed(2))}
+                        onChange={(event) =>
+                          setNorms((current) => ({
+                            ...current,
+                            cashConversion: event.target.valueAsNumber / 100,
+                          }))
+                        }
+                      />
+                      <b>%</b>
+                    </span>
+                  </label>
+                </div>
+
+                <p className="norm-settings-note">
+                  Первичная настройка: ROAS 12×, CAC не выше 42 000 ₽, прибыль
+                  на лида не ниже 20 000 ₽ и Cash Conversion не ниже 90%.
+                </p>
+
+                {normSaved ? (
+                  <div className="connection-result success" role="status">
+                    <strong>Нормативы сохранены</strong>
+                    <span>Значения на вкладке «Дашборды» пересчитаны.</span>
+                  </div>
+                ) : null}
+
+                {normError ? (
+                  <div className="connection-result error" role="alert">
+                    <strong>Нормативы не сохранены</strong>
+                    <span>{normError}</span>
+                  </div>
+                ) : null}
+
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={savingNorms}
+                    onClick={() => setOpen(false)}
+                  >
+                    Закрыть
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-button"
+                    disabled={savingNorms}
+                  >
+                    {savingNorms ? "Сохраняем…" : "Сохранить нормативы"}
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
         </div>
       ) : null}
@@ -268,4 +516,3 @@ function CloseIcon() {
     </svg>
   );
 }
-

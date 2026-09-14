@@ -31,6 +31,30 @@ export interface KpiValue {
   hint?: string;
 }
 
+export interface ManagementMetric {
+  key: "roas" | "cac" | "gross-profit-per-lead" | "cash-conversion";
+  label: string;
+  value: number | null;
+  norm: number;
+  normDirection: "higher" | "lower";
+  normDelta: number | null;
+  normDeltaMode: "relative" | "percentage-points";
+  format: ValueFormat;
+  hint: string;
+  source: string;
+  scaleMax: number;
+}
+
+export interface ManagementInputs {
+  revenue: number;
+  marketingBudget: number;
+  payments: number;
+  grossProfit: number;
+  marketingLeads: number;
+  receiptsWithVat: number;
+  receiptsWithoutVat: number;
+}
+
 export interface SeriesPoint {
   key: string;
   label: string;
@@ -109,4 +133,6 @@ export interface DashboardResponse {
   funnel?: Array<{ key: string; label: string; value: number }>;
   breakdown?: Array<{ key: string; label: string; value: number }>;
   contractorShareLimit?: number;
+  managementMetrics?: ManagementMetric[];
+  managementInputs?: ManagementInputs;
 }

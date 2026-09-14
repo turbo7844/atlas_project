@@ -24,6 +24,13 @@ describe("parseDashboardQuery", () => {
     expect(query.to).toBe("2026-08");
     expect(query.granularity).toBe("month");
     expect(query.directions).toHaveLength(5);
+
+    const dashboardsQuery = parseDashboardQuery(
+      new URLSearchParams(),
+      "dashboards",
+    );
+    expect(dashboardsQuery.directions).toHaveLength(5);
+    expect(dashboardsQuery.directions).not.toContain("general");
   });
 
   it("поддерживает пустой набор направлений и кварталы", () => {
