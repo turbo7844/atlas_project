@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/auth/server";
 import {
   getDashboardNorms,
   saveDashboardNorms,
@@ -26,6 +27,9 @@ function positiveNumber(
 }
 
 export async function GET() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     return NextResponse.json(await getDashboardNorms());
   } catch (error) {
@@ -42,6 +46,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const payload = (await request.json()) as Record<string, unknown>;
     const norms = await saveDashboardNorms({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/auth/server";
 import { env } from "@/lib/env";
 import {
   Bitrix24ApiError,
@@ -22,6 +23,9 @@ function configuredPortal() {
 }
 
 export async function GET() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   return NextResponse.json(
     {
       configured: Boolean(env.bitrix24WebhookUrl.trim()),
@@ -32,6 +36,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -88,4 +95,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

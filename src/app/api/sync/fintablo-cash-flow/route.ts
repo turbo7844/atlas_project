@@ -1,6 +1,7 @@
 import { SyncTrigger } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { requireAdmin } from "@/lib/auth/server";
 import {
   getFintabloCashFlowSyncStatus,
   synchronizeFintabloCashFlow,
@@ -26,6 +27,9 @@ export async function GET() {
 }
 
 export async function POST() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const result = await synchronizeFintabloCashFlow(SyncTrigger.MANUAL);
     return NextResponse.json(result, {

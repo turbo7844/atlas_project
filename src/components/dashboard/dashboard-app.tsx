@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- Эффекты загружают состояние из localStorage и серверного API. */
 
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -179,7 +180,8 @@ function restoreState(value: string): PersistedState {
   };
 }
 
-export function DashboardApp() {
+export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
+  const router = useRouter();
   const [state, setState] = useState<PersistedState>(defaultState);
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<DashboardResponse | null>(null);
@@ -187,6 +189,7 @@ export function DashboardApp() {
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [actualSyncStatus, setActualSyncStatus] =
@@ -559,6 +562,19 @@ export function DashboardApp() {
     value: PersistedState[Key],
   ) => setState((current) => ({ ...current, [key]: value }));
 
+  const logout = async () => {
+    setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error();
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      setToast("Не удалось выйти из системы. Повторите попытку.");
+      setLoggingOut(false);
+    }
+  };
+
   const synchronize = async () => {
     setSyncing(true);
     setToast(null);
@@ -743,37 +759,54 @@ export function DashboardApp() {
               )}
             </small>
           </div>
-          <button
-            type="button"
-            className="icon-button sync-button"
-            aria-label={
-              state.section === "cash-flow"
-                ? "Синхронизировать ДДС FinTablo"
-                : state.section === "dashboards"
-                  ? "Обновить источники дашборда"
-                : state.section === "sales" || state.section === "revenue"
-                  ? "Синхронизировать продажи Bitrix24"
-                : "Синхронизировать маркетинговый план"
-            }
-            data-tooltip={
-              state.section === "cash-flow"
-                ? "Обновить ДДС из FinTablo"
-                : state.section === "dashboards"
-                  ? "Обновить данные Bitrix24 и FinTablo"
-                : state.section === "sales" || state.section === "revenue"
-                  ? "Обновить данные из Bitrix24"
-                : "Синхронизировать данные"
-            }
-            disabled={syncing}
-            onClick={() => void synchronize()}
-          >
-            <SyncIcon spinning={syncing} />
-          </button>
-          <IntegrationSettings
-            onDashboardNormsSaved={() =>
-              setRefreshToken((value) => value + 1)
-            }
-          />
+          {isAdmin ? (
+            <>
+              <button
+                type="button"
+                className="icon-button sync-button"
+                aria-label={
+                  state.section === "cash-flow"
+                    ? "Синхронизировать ДДС FinTablo"
+                    : state.section === "dashboards"
+                      ? "Обновить источники дашборда"
+                    : state.section === "sales" ||
+                        state.section === "revenue"
+                      ? "Синхронизировать продажи Bitrix24"
+                    : "Синхронизировать маркетинговый план"
+                }
+                data-tooltip={
+                  state.section === "cash-flow"
+                    ? "Обновить ДДС из FinTablo"
+                    : state.section === "dashboards"
+                      ? "Обновить данные Bitrix24 и FinTablo"
+                    : state.section === "sales" ||
+                        state.section === "revenue"
+                      ? "Обновить данные из Bitrix24"
+                    : "Синхронизировать данные"
+                }
+                disabled={syncing}
+                onClick={() => void synchronize()}
+              >
+                <SyncIcon spinning={syncing} />
+              </button>
+              <IntegrationSettings
+                onDashboardNormsSaved={() =>
+                  setRefreshToken((value) => value + 1)
+                }
+              />
+            </>
+          ) : null}
+          <div className="account-area">
+            <span>{isAdmin ? "Администратор" : "Пользователь"}</span>
+            <button
+              className="logout-button"
+              disabled={loggingOut}
+              onClick={() => void logout()}
+              type="button"
+            >
+              {loggingOut ? "Выходим…" : "Выйти"}
+            </button>
+          </div>
         </div>
       </header>
 
