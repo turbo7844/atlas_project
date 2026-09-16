@@ -13,6 +13,7 @@ import {
   DIRECTION_BY_SOURCE_NAME,
   DIRECTIONS,
   MONTHS,
+  PAYROLL_SOURCE_KEY,
   type CashFlowDirectionId,
   type DashboardSection,
   type Granularity,
@@ -328,11 +329,23 @@ async function marketingDashboard(
   const series: SeriesPoint[] = buckets.map((bucket) => {
     const planned = plan.filter((row) => bucket.months.includes(row.month));
     const factual = actual.filter((row) => bucket.months.includes(row.month));
+    const planValue = marketingTotals(planned);
+    const actualValue = marketingTotals(factual);
     return {
       key: bucket.key,
       label: bucket.label,
-      planBudget: planned.length ? marketingTotals(planned).budget : null,
-      actualBudget: factual.length ? marketingTotals(factual).budget : null,
+      planBudget: planned.length ? planValue.budget : null,
+      actualBudget: factual.length ? actualValue.budget : null,
+      planVisits: planned.length ? planValue.visits : null,
+      actualVisits: factual.length ? actualValue.visits : null,
+      planLeads: planned.length ? planValue.leads : null,
+      actualLeads: factual.length ? actualValue.leads : null,
+      planConversion: planned.length ? planValue.conversion : null,
+      actualConversion: factual.length ? actualValue.conversion : null,
+      planCpc: planned.length ? planValue.cpc : null,
+      actualCpc: factual.length ? actualValue.cpc : null,
+      planCpl: planned.length ? planValue.cpl : null,
+      actualCpl: factual.length ? actualValue.cpl : null,
     };
   });
 
@@ -421,7 +434,7 @@ async function revenueDashboard(
   };
   const payrollWhere = {
     ...baseWhere,
-    source: { key: "local-payroll-xlsx" },
+    source: { key: PAYROLL_SOURCE_KEY },
   };
   const [
     sales,
@@ -446,7 +459,7 @@ async function revenueDashboard(
       ? prisma.payrollMonthly.findMany({ where: { ...payrollWhere, month: { in: priorMonths } } })
       : Promise.resolve([]),
     prisma.payrollSyncState.findFirst({
-      where: { source: { key: "local-payroll-xlsx" } },
+      where: { source: { key: PAYROLL_SOURCE_KEY } },
     }),
     prisma.bitrixSalesSyncState.findFirst({
       where: { source: { key: "bitrix24-sales" } },
@@ -735,16 +748,24 @@ async function cashFlowDashboard(
   const leadingKeys = new Set(leadingCategories.map((item) => item.key));
   const buckets = periodBuckets(months, query.granularity);
   const series: SeriesPoint[] = buckets.map((bucket) => {
+    const bucketEntries = entries.filter((row) =>
+      bucket.months.includes(row.date.getUTCMonth() + 1),
+    );
+    const bucketIncome = flowTotal(bucketEntries, "income");
+    const bucketExpense = flowTotal(bucketEntries, "outcome");
     const point: SeriesPoint = {
       key: bucket.key,
       label: bucket.label,
+      liveIncome: bucketIncome,
+      liveExpense: bucketExpense,
+      liveNet: bucketIncome - bucketExpense,
+      liveProfitability: ratio(
+        bucketIncome - bucketExpense,
+        bucketIncome,
+      ),
     };
     for (const category of breakdown) point[category.key] = 0;
-    for (const entry of entries.filter(
-      (row) =>
-        row.group === "outcome" &&
-        bucket.months.includes(row.date.getUTCMonth() + 1),
-    )) {
+    for (const entry of bucketEntries.filter((row) => row.group === "outcome")) {
       const category = cashFlowCategory(entry);
       const key = leadingKeys.has(category.key) ? category.key : "other";
       if (key in point) {
@@ -849,6 +870,7 @@ async function salesDashboard(
       proposals: values.proposals,
       contracts: values.contracts,
       payments: values.payments,
+      revenue: values.revenue,
     };
   });
 
@@ -1054,6 +1076,58 @@ async function managementDashboard(
     }),
   ];
 
+  const buckets = periodBuckets(months, query.granularity);
+  const series: SeriesPoint[] = buckets.map((bucket) => {
+    const bucketMarketing = marketing.filter((row) =>
+      bucket.months.includes(row.date.getUTCMonth() + 1),
+    );
+    const bucketSales = sales.filter((row) => bucket.months.includes(row.month));
+    const bucketCosts = costs.filter((row) => bucket.months.includes(row.month));
+    const bucketCashEntries = cashEntries.filter((row) =>
+      bucket.months.includes(row.date.getUTCMonth() + 1),
+    );
+    const bucketMarketingBudget = sum(
+      bucketMarketing.map((row) => row.budget.toNumber()),
+    );
+    const bucketMarketingLeads = sum(
+      bucketMarketing.map((row) => row.leads),
+    );
+    const bucketRevenue = salesRevenue(bucketSales);
+    const bucketPayments = sum(bucketSales.map((row) => row.payments));
+    const bucketGrossProfit = bucketRevenue - contractorTotal(bucketCosts);
+    const bucketReceiptsWithVat = flowTotal(bucketCashEntries, "income");
+    const bucketReceiptsWithoutVat =
+      bucketReceiptsWithVat / FINTABLO_VAT_DIVISOR;
+
+    return {
+      key: bucket.key,
+      label: bucket.label,
+      roas:
+        bucketSales.length && bucketMarketing.length
+          ? ratio(bucketRevenue, bucketMarketingBudget)
+          : null,
+      cac:
+        bucketSales.length && bucketMarketing.length
+          ? ratio(bucketMarketingBudget, bucketPayments)
+          : null,
+      "gross-profit-per-lead":
+        bucketSales.length && bucketMarketing.length
+          ? ratio(bucketGrossProfit, bucketMarketingLeads)
+          : null,
+      "cash-conversion":
+        bucketSales.length && bucketCashEntries.length
+          ? ratio(bucketReceiptsWithoutVat, bucketRevenue)
+          : null,
+      managementRevenue: bucketRevenue,
+      managementMarketingBudget: bucketMarketingBudget,
+      managementPayments: bucketPayments,
+      managementGrossProfit: bucketGrossProfit,
+      managementMarketingLeads: bucketMarketingLeads,
+      managementReceiptsWithVat: bucketReceiptsWithVat,
+      managementReceiptsWithoutVat: bucketReceiptsWithoutVat,
+    };
+  });
+
   const coverageDates = [
     marketingSyncState?.maxDate,
     bitrixSyncState?.maxRevenueDate,
@@ -1086,7 +1160,7 @@ async function managementDashboard(
       ].join(" "),
     },
     kpis: [],
-    series: [],
+    series,
     rows: [],
     managementMetrics,
     managementInputs: {

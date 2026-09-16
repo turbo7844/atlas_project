@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import { PayrollUpload } from "@/components/dashboard/payroll-upload";
+
 type IntegrationStatus = {
   configured: boolean;
   portal: string | null;
@@ -19,7 +21,7 @@ type ConnectionResult = {
   dealCount: number;
 };
 
-type SettingsSection = "integrations" | "norms";
+type SettingsSection = "integrations" | "norms" | "payroll";
 
 type DashboardNorms = {
   roas: number;
@@ -39,8 +41,10 @@ const defaultNorms: DashboardNorms = {
 
 export function IntegrationSettings({
   onDashboardNormsSaved,
+  onPayrollImported,
 }: {
   onDashboardNormsSaved?: () => void;
+  onPayrollImported?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<SettingsSection>("integrations");
@@ -53,15 +57,23 @@ export function IntegrationSettings({
   const [savingNorms, setSavingNorms] = useState(false);
   const [normError, setNormError] = useState<string | null>(null);
   const [normSaved, setNormSaved] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !checking && !savingNorms) setOpen(false);
+      if (
+        event.key === "Escape" &&
+        !checking &&
+        !savingNorms &&
+        !uploadBusy
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [checking, open, savingNorms]);
+  }, [checking, open, savingNorms, uploadBusy]);
 
   const showSettings = async () => {
     setOpen(true);
@@ -186,7 +198,8 @@ export function IntegrationSettings({
             if (
               event.target === event.currentTarget &&
               !checking &&
-              !savingNorms
+              !savingNorms &&
+              !uploadBusy
             ) {
               setOpen(false);
             }
@@ -207,7 +220,7 @@ export function IntegrationSettings({
                 type="button"
                 className="icon-button"
                 aria-label="Закрыть настройки"
-                disabled={checking || savingNorms}
+                disabled={checking || savingNorms || uploadBusy}
                 onClick={() => setOpen(false)}
               >
                 <CloseIcon />
@@ -217,6 +230,7 @@ export function IntegrationSettings({
             <nav className="settings-section-tabs" aria-label="Разделы настроек">
               <button
                 type="button"
+                disabled={uploadBusy}
                 className={section === "integrations" ? "active" : ""}
                 onClick={() => setSection("integrations")}
               >
@@ -224,10 +238,19 @@ export function IntegrationSettings({
               </button>
               <button
                 type="button"
+                disabled={uploadBusy}
                 className={section === "norms" ? "active" : ""}
                 onClick={() => setSection("norms")}
               >
                 Нормативы
+              </button>
+              <button
+                type="button"
+                disabled={uploadBusy}
+                className={section === "payroll" ? "active" : ""}
+                onClick={() => setSection("payroll")}
+              >
+                Начисления ФОТ
               </button>
             </nav>
 
@@ -330,7 +353,7 @@ export function IntegrationSettings({
                 </button>
               </div>
               </form>
-            ) : (
+            ) : section === "norms" ? (
               <form className="integration-form" onSubmit={saveNorms}>
                 <div className="integration-heading">
                   <div>
@@ -482,6 +505,38 @@ export function IntegrationSettings({
                   </button>
                 </div>
               </form>
+            ) : (
+              <div className="integration-form">
+                <div className="integration-heading">
+                  <div>
+                    <span className="integration-index">03</span>
+                    <h3>Загрузка начислений ФОТ</h3>
+                  </div>
+                  <span className="integration-state configured">XLSX</span>
+                </div>
+
+                <p className="integration-description">
+                  Загрузите книгу вручную. Atlas добавит новые месяцы, пропустит
+                  полные повторы и попросит подтвердить любые расхождения с уже
+                  сохранёнными данными.
+                </p>
+
+                <PayrollUpload
+                  onBusyChange={setUploadBusy}
+                  onImported={() => onPayrollImported?.()}
+                />
+
+                <div className="settings-actions payroll-close-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={uploadBusy}
+                    onClick={() => setOpen(false)}
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
             )}
           </section>
         </div>

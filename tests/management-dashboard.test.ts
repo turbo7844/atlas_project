@@ -136,6 +136,15 @@ describe("управленческий дашборд", () => {
       normDeltaMode: "percentage-points",
     });
     expect(dashboard.managementMetrics?.[3]?.normDelta).toBeCloseTo(0.1);
+    expect(dashboard.series[0]).toMatchObject({
+      key: "2026-07",
+      roas: 20,
+      cac: 610,
+      "gross-profit-per-lead": 2_000,
+      "cash-conversion": 1,
+      managementRevenue: 24_400,
+      managementMarketingBudget: 1_220,
+    });
     expect(dashboard.managementInputs).toMatchObject({
       receiptsWithVat: 29_768,
       receiptsWithoutVat: 24_400,

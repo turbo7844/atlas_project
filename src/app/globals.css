@@ -11,7 +11,49 @@
   --blue-pale: #d9e3ea;
   --warm: #b37b3e;
   --warm-pale: #ead9bf;
+  --chart-plan: #6f96b8;
+  --chart-fact: #1f5b8f;
+  --chart-1: #1f5b8f;
+  --chart-2: #6f96b8;
+  --chart-3: #a9bfd0;
+  --chart-4: #d3a86f;
+  --chart-5: #61727f;
+  --chart-6: #b8a58c;
   --content-width: 1540px;
+}
+
+html[data-atlas-theme="night"] {
+  color-scheme: dark;
+  --paper: #0a1014;
+  --paper-deep: #111b21;
+  --surface: #142028;
+  --ink: #edf4f5;
+  --muted: #94a5ae;
+  --line: #2c3b43;
+  --line-strong: #60737d;
+  --blue: #59b8ff;
+  --blue-soft: #3f8fc7;
+  --blue-pale: #15364b;
+  --warm: #d5a15f;
+  --warm-pale: #3b2e1e;
+  --chart-plan: #8798a8;
+  --chart-fact: #49bdff;
+  --chart-1: #59b8ff;
+  --chart-2: #7bcbd1;
+  --chart-3: #a8c6d7;
+  --chart-4: #e0ad68;
+  --chart-5: #89a7b7;
+  --chart-6: #c6b08e;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+  animation: none;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-reveal 620ms cubic-bezier(0.2, 0.76, 0.2, 1) both;
 }
 
 * {
@@ -33,6 +75,27 @@ body {
     var(--paper);
   color: var(--ink);
   font-family: "Montserrat";
+  transition: background-color 220ms ease, color 220ms ease;
+}
+
+.dashboard-shell,
+.dashboard-shell *,
+.dashboard-shell *::before,
+.dashboard-shell *::after {
+  transition-property: background-color, border-color, color, fill, stroke, opacity;
+  transition-duration: 220ms;
+  transition-timing-function: ease;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 button,
@@ -244,6 +307,54 @@ button:disabled {
   gap: 16px;
 }
 
+.atlas-view-actions {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+}
+
+.atlas-view-actions .icon-button {
+  border: 0;
+  border-right: 1px solid var(--line-strong);
+}
+
+.atlas-view-actions .icon-button[aria-pressed="true"] {
+  background: var(--blue-pale);
+  color: var(--blue);
+}
+
+.live-launch-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-launch-button:hover:not(:disabled),
+.live-launch-button.active {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.live-launch-button svg {
+  color: var(--blue);
+}
+
+.live-launch-button:hover:not(:disabled) svg,
+.live-launch-button.active svg {
+  color: inherit;
+}
+
 .account-area {
   min-height: 40px;
   display: flex;
@@ -329,7 +440,7 @@ button:disabled {
 }
 
 .settings-dialog {
-  width: min(760px, 100%);
+  width: min(860px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   border: 1px solid var(--ink);
@@ -338,7 +449,7 @@ button:disabled {
 
 .settings-section-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   border-bottom: 1px solid var(--ink);
 }
 
@@ -682,6 +793,317 @@ button:disabled {
 .settings-actions button:hover:not(:disabled) {
   background: var(--ink);
   color: var(--surface);
+}
+
+.payroll-upload {
+  display: grid;
+}
+
+.payroll-dropzone {
+  min-height: 178px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed var(--line-strong);
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.payroll-dropzone:hover,
+.payroll-dropzone:focus-visible,
+.payroll-dropzone.dragging {
+  border-color: var(--blue);
+  outline: 0;
+  background: var(--blue-pale);
+  color: var(--blue);
+}
+
+.payroll-dropzone.busy {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.payroll-dropzone input {
+  display: none;
+}
+
+.payroll-dropzone strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.payroll-dropzone span,
+.payroll-dropzone small {
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.payroll-dropzone small {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--blue);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payroll-format-note {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-left: 2px solid var(--blue);
+  background: var(--blue-pale);
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.payroll-format-note strong {
+  font-size: 9px;
+}
+
+.payroll-format-note span {
+  color: var(--muted);
+}
+
+.payroll-confirmation {
+  margin-top: 20px;
+  border-top: 1px solid var(--ink);
+}
+
+.payroll-confirmation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 20px;
+}
+
+.payroll-confirmation-heading > div {
+  display: grid;
+  gap: 6px;
+}
+
+.payroll-confirmation-heading h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.payroll-confirmation-heading > strong {
+  min-width: 58px;
+  padding: 6px 8px;
+  border: 1px solid var(--warm);
+  color: var(--warm);
+  font-size: 9px;
+  text-align: center;
+}
+
+.payroll-confirmation > p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.payroll-preview-summary {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  margin: 17px 0 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.payroll-preview-summary > div {
+  min-width: 0;
+  padding: 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.payroll-preview-summary dt,
+.payroll-preview-summary dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payroll-preview-summary dt {
+  color: var(--muted);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.payroll-preview-summary dd {
+  margin: 4px 0 0;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.payroll-bulk-decisions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 13px 0;
+}
+
+.payroll-bulk-decisions span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.payroll-bulk-decisions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.payroll-bulk-decisions button:hover {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.payroll-conflict-list {
+  display: grid;
+  gap: 14px;
+}
+
+.payroll-conflict {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+}
+
+.payroll-conflict legend {
+  padding: 0 7px;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.payroll-comparison {
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.payroll-comparison-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+}
+
+.payroll-comparison-row > * {
+  min-width: 0;
+  padding: 8px 9px;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 8px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payroll-comparison-row > *:first-child {
+  text-align: left;
+}
+
+.payroll-comparison-row.header > * {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.payroll-comparison-row strong {
+  font-weight: 600;
+}
+
+.payroll-comparison-row.changed > span {
+  background: var(--warm-pale);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.payroll-conflict-question {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.payroll-conflict-question > span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.payroll-conflict-question label {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.payroll-conflict-question label.selected {
+  border-color: var(--blue);
+  background: var(--blue-pale);
+  color: var(--blue);
+}
+
+.payroll-conflict-question input {
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.payroll-confirmation-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 16px;
+  border: 1px solid var(--ink);
+}
+
+.payroll-confirmation-actions button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.payroll-confirmation-actions button:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.payroll-close-actions {
+  grid-template-columns: 1fr;
 }
 
 [data-tooltip]::after {
@@ -1083,6 +1505,30 @@ button:disabled {
   min-height: 146px;
   padding: 22px 18px 17px;
   border-left: 1px solid var(--line);
+  cursor: default;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.kpi-card.focus-active {
+  background: var(--blue-pale);
+  transform: translateY(-3px);
+}
+
+.focus-target {
+  transition: opacity 180ms ease, transform 180ms ease, filter 180ms ease;
+}
+
+.focus-target.focus-muted {
+  opacity: 0.22;
+}
+
+.focus-target.focus-active {
+  opacity: 1;
 }
 
 .kpi-card:first-child {
@@ -1239,6 +1685,7 @@ button:disabled {
 }
 
 .chart-wrap {
+  position: relative;
   min-height: 280px;
 }
 
@@ -1256,6 +1703,31 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 5px;
+  cursor: default;
+}
+
+.chart-point-readout {
+  position: absolute;
+  z-index: 2;
+  top: 24px;
+  left: 0;
+  max-width: calc(100% - 12px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  padding: 7px 9px;
+  border-left: 2px solid var(--blue);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.35;
+  pointer-events: none;
+  animation: live-readout-in 160ms both ease-out;
+}
+
+.chart-point-readout strong {
+  color: var(--ink);
+  font-size: 8px;
 }
 
 .chart-legend i,
@@ -1288,6 +1760,19 @@ button:disabled {
   vector-effect: non-scaling-stroke;
   stroke-dasharray: 1200;
   animation: draw-line 850ms both ease-out;
+}
+
+.chart-series {
+  transition: opacity 180ms ease;
+}
+
+.chart-crosshair {
+  stroke: var(--blue);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  animation: crosshair-in 180ms both ease-out;
 }
 
 .chart-enter {
@@ -1842,6 +2327,194 @@ tbody tr:hover {
   animation: toast-in 180ms both ease-out;
 }
 
+.presentation-mode {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  padding-inline: clamp(24px, 4vw, 72px);
+  overflow: auto;
+  background: var(--paper);
+}
+
+.presentation-mode .app-header {
+  min-height: 76px;
+}
+
+.presentation-mode .sync-copy,
+.presentation-mode .sync-button,
+.presentation-mode .settings-button,
+.presentation-mode .account-area,
+.presentation-mode .tabs,
+.presentation-mode .toolbar,
+.presentation-mode .app-footer {
+  display: none;
+}
+
+.presentation-mode .page-intro {
+  min-height: 118px;
+  padding-block: 25px 21px;
+}
+
+.presentation-mode .page-intro h1 {
+  font-size: clamp(32px, 4.4vw, 64px);
+}
+
+.atlas-live-active {
+  padding-bottom: 112px;
+}
+
+.atlas-live-console {
+  position: fixed;
+  z-index: 80;
+  right: 50%;
+  bottom: 22px;
+  width: min(820px, calc(100vw - 32px));
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.55fr) 38px 38px 38px minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(14px);
+  transform: translateX(50%);
+  animation: live-console-in 320ms both cubic-bezier(0.2, 0.76, 0.2, 1);
+}
+
+.atlas-live-status {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding-inline: 7px 12px;
+  border-right: 1px solid var(--line);
+}
+
+.atlas-live-status span {
+  color: var(--blue);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.atlas-live-status strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-live-control {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.atlas-live-control:hover,
+.atlas-live-control.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.atlas-live-timeline {
+  position: relative;
+  height: 38px;
+  display: flex;
+  align-items: center;
+}
+
+.atlas-live-timeline::before,
+.atlas-live-timeline::after {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 0;
+  height: 3px;
+  pointer-events: none;
+}
+
+.atlas-live-timeline::before {
+  right: 0;
+  background: var(--paper-deep);
+}
+
+.atlas-live-timeline::after {
+  width: var(--live-progress);
+  background: var(--blue);
+}
+
+.atlas-live-timeline input {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 38px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.atlas-live-timeline input::-webkit-slider-runnable-track {
+  height: 3px;
+  background: transparent;
+}
+
+.atlas-live-timeline input::-webkit-slider-thumb {
+  width: 11px;
+  height: 17px;
+  margin-top: -7px;
+  appearance: none;
+  border: 2px solid var(--surface);
+  border-radius: 0;
+  background: var(--blue);
+}
+
+.atlas-live-timeline input::-moz-range-track {
+  height: 3px;
+  background: transparent;
+}
+
+.atlas-live-timeline input::-moz-range-thumb {
+  width: 9px;
+  height: 15px;
+  border: 2px solid var(--surface);
+  border-radius: 0;
+  background: var(--blue);
+}
+
+.atlas-live-counter {
+  color: var(--muted);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.atlas-live-close {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.atlas-live-close:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
 .app-footer {
   display: flex;
   justify-content: space-between;
@@ -1904,6 +2577,30 @@ tbody tr:hover {
   to { transform: rotate(360deg); }
 }
 
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-origin-x) var(--theme-origin-y));
+  }
+  to {
+    clip-path: circle(150vmax at var(--theme-origin-x) var(--theme-origin-y));
+  }
+}
+
+@keyframes live-console-in {
+  from { opacity: 0; transform: translate(50%, 16px); }
+  to { opacity: 1; transform: translate(50%, 0); }
+}
+
+@keyframes live-readout-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes crosshair-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (max-width: 1180px) {
   .dashboard-shell {
     padding-inline: 28px;
@@ -1940,6 +2637,16 @@ tbody tr:hover {
   .feature-panel {
     padding-inline: 18px;
   }
+
+  .live-launch-button {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .live-launch-button span {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1949,6 +2656,14 @@ tbody tr:hover {
 
   .app-header {
     min-height: 86px;
+  }
+
+  .sync-area {
+    gap: 8px;
+  }
+
+  .sync-copy {
+    display: none;
   }
 
   .tabs {
@@ -2032,6 +2747,57 @@ tbody tr:hover {
     padding-inline: 15px;
   }
 
+  .settings-backdrop {
+    padding: 10px;
+  }
+
+  .settings-dialog {
+    max-height: calc(100vh - 20px);
+  }
+
+  .settings-section-tabs button {
+    padding-inline: 6px;
+    font-size: 8px;
+  }
+
+  .integration-form {
+    padding-inline: 14px;
+  }
+
+  .payroll-preview-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .payroll-bulk-decisions,
+  .payroll-conflict-question {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-bulk-decisions {
+    display: grid;
+  }
+
+  .payroll-bulk-decisions span {
+    margin: 0;
+  }
+
+  .payroll-bulk-decisions button {
+    min-height: 36px;
+  }
+
+  .payroll-comparison-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .payroll-conflict-question label {
+    min-height: 38px;
+  }
+
+  .settings-actions {
+    margin-inline: -14px;
+  }
+
   .app-header {
     min-height: 74px;
   }
@@ -2042,8 +2808,22 @@ tbody tr:hover {
     display: none;
   }
 
+  .brand > div {
+    display: none;
+  }
+
   .sync-area {
     gap: 8px;
+  }
+
+  .atlas-view-actions .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .live-launch-button {
+    width: 36px;
+    min-height: 36px;
   }
 
   .account-area {
@@ -2237,6 +3017,38 @@ tbody tr:hover {
   .app-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .atlas-live-console {
+    bottom: 10px;
+    width: calc(100vw - 20px);
+    grid-template-columns: 1fr 36px 36px 36px auto;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .atlas-live-status {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    border-right: 0;
+  }
+
+  .atlas-live-timeline {
+    grid-column: 1 / 5;
+    grid-row: 3;
+  }
+
+  .atlas-live-counter {
+    grid-column: 5;
+    grid-row: 3;
+  }
+
+  .atlas-live-close {
+    grid-column: 5;
+    grid-row: 2;
+    padding-inline: 8px;
   }
 }
 

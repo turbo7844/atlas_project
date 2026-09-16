@@ -28,8 +28,6 @@ export const env = {
     process.env.MARKETING_ACTUAL_SPREADSHEET_ID ?? "",
   marketingActualSheetName:
     process.env.MARKETING_ACTUAL_SHEET_NAME ?? "",
-  payrollXlsxDirectory: process.env.PAYROLL_XLSX_DIRECTORY ?? "",
-  payrollXlsxFilename: process.env.PAYROLL_XLSX_FILENAME ?? "",
   fintabloApiKey: process.env.FINTABLO_API_KEY ?? "",
   fintabloApiBaseUrl:
     process.env.FINTABLO_API_BASE_URL ?? "https://api.fintablo.ru",
