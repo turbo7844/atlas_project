@@ -209,6 +209,18 @@ describe("ДДС FinTablo", () => {
         0,
       ),
     ).toBe(280);
+    expect(
+      dashboard.series.reduce(
+        (total, point) => total + Number(point.liveIncome ?? 0),
+        0,
+      ),
+    ).toBe(1_000);
+    expect(
+      dashboard.series.reduce(
+        (total, point) => total + Number(point.liveExpense ?? 0),
+        0,
+      ),
+    ).toBe(280);
   });
 
   it("относит неизвестное направление к общему и не делит на ноль", async () => {

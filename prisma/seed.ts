@@ -104,17 +104,17 @@ async function seed() {
   });
 
   await prisma.dataSource.upsert({
-    where: { key: "local-payroll-xlsx" },
+    where: { key: "payroll-xlsx-upload" },
     update: {
-      name: "Начисления ФОТ из локального XLSX",
-      type: "LOCAL_XLSX",
+      name: "Начисления ФОТ из загружаемых XLSX",
+      type: "UPLOADED_XLSX",
       enabled: true,
       syncIntervalMinutes: 1,
     },
     create: {
-      key: "local-payroll-xlsx",
-      name: "Начисления ФОТ из локального XLSX",
-      type: "LOCAL_XLSX",
+      key: "payroll-xlsx-upload",
+      name: "Начисления ФОТ из загружаемых XLSX",
+      type: "UPLOADED_XLSX",
       syncIntervalMinutes: 1,
     },
   });

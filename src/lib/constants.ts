@@ -6,6 +6,8 @@ export const DIRECTIONS = [
   { id: "ad-campaigns", name: "Рекламные кампании" },
 ] as const;
 
+export const PAYROLL_SOURCE_KEY = "payroll-xlsx-upload";
+
 export const DIRECTION_BY_SOURCE_NAME = new Map<string, DirectionId>(
   DIRECTIONS.map((direction) => [direction.name, direction.id]),
 );

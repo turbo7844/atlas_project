@@ -1,5 +1,9 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect -- Числа плавно переходят к новому значению после обновления данных. */
+
+import { useEffect, useRef, useState } from "react";
+
 import {
   formatCompactCurrency,
   formatPercentagePoints,
@@ -10,17 +14,32 @@ import type { KpiValue } from "@/types/dashboard";
 export function KpiGrid({
   kpis,
   marketing = false,
+  activeMetricKey = null,
+  onMetricFocus,
 }: {
   kpis: KpiValue[];
   marketing?: boolean;
+  activeMetricKey?: string | null;
+  onMetricFocus?: (key: string | null) => void;
 }) {
   return (
     <section className="kpi-grid" aria-label="Ключевые показатели">
       {kpis.map((kpi, index) => (
         <article
-          className="kpi-card reveal"
+          className={`kpi-card reveal focus-target${
+            activeMetricKey && activeMetricKey !== kpi.key
+              ? " focus-muted"
+              : activeMetricKey === kpi.key
+                ? " focus-active"
+                : ""
+          }`}
           key={kpi.key}
           style={{ animationDelay: `${index * 45}ms` }}
+          tabIndex={0}
+          onPointerEnter={() => onMetricFocus?.(kpi.key)}
+          onPointerLeave={() => onMetricFocus?.(null)}
+          onFocus={() => onMetricFocus?.(kpi.key)}
+          onBlur={() => onMetricFocus?.(null)}
         >
           <div className="kpi-heading">
             <span>{kpi.label}</span>
@@ -38,9 +57,7 @@ export function KpiGrid({
                   : undefined
               }
             >
-              {kpi.format === "currency"
-                ? formatCompactCurrency(kpi.value)
-                : formatValue(kpi.value, kpi.format)}
+              <AnimatedValue value={kpi.value} format={kpi.format} />
             </strong>
             <Delta value={kpi.delta} mode={kpi.deltaMode} />
           </div>
@@ -66,6 +83,49 @@ export function KpiGrid({
       ))}
     </section>
   );
+}
+
+export function AnimatedValue({
+  value,
+  format,
+}: {
+  value: number | null;
+  format: KpiValue["format"];
+}) {
+  const [displayValue, setDisplayValue] = useState<number | null>(
+    value === null ? null : 0,
+  );
+  const latestValue = useRef(displayValue);
+
+  useEffect(() => {
+    if (value === null) {
+      latestValue.current = null;
+      setDisplayValue(null);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      latestValue.current = value;
+      setDisplayValue(value);
+      return;
+    }
+    const from = latestValue.current ?? 0;
+    const startedAt = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / 620);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = from + (value - from) * eased;
+      latestValue.current = next;
+      setDisplayValue(next);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return format === "currency"
+    ? formatCompactCurrency(displayValue)
+    : formatValue(displayValue, format);
 }
 
 function Delta({

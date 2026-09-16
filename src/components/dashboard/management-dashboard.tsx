@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { AnimatedValue } from "@/components/dashboard/kpis";
 import {
   formatPercentagePoints,
   formatValue,
@@ -33,9 +34,13 @@ function deviation(metric: ManagementMetric) {
 function MetricCard({
   metric,
   index,
+  activeMetricKey,
+  onMetricFocus,
 }: {
   metric: ManagementMetric;
   index: number;
+  activeMetricKey: string | null;
+  onMetricFocus?: (key: string | null) => void;
 }) {
   const attention = metric.normDelta !== null && metric.normDelta < 0;
   const fact = metricPosition(metric, metric.value);
@@ -44,11 +49,18 @@ function MetricCard({
     "--management-fact": `${fact}%`,
     "--management-norm": `${norm}%`,
   } as CSSProperties;
+  const muted = Boolean(activeMetricKey && activeMetricKey !== metric.key);
+  const active = activeMetricKey === metric.key;
 
   return (
     <article
-      className={`management-card reveal ${attention ? "attention" : ""}`}
+      className={`management-card reveal focus-target ${attention ? "attention" : ""}${muted ? " focus-muted" : ""}${active ? " focus-active" : ""}`}
       style={{ ...style, animationDelay: `${index * 45}ms` }}
+      tabIndex={0}
+      onPointerEnter={() => onMetricFocus?.(metric.key)}
+      onPointerLeave={() => onMetricFocus?.(null)}
+      onFocus={() => onMetricFocus?.(metric.key)}
+      onBlur={() => onMetricFocus?.(null)}
     >
       <div className="management-card-heading">
         <span>{metric.label}</span>
@@ -61,7 +73,10 @@ function MetricCard({
           i
         </span>
       </div>
-      <strong className="management-value">{metricValue(metric)}</strong>
+      <strong className="management-value">
+        <AnimatedValue value={metric.value} format={metric.format} />
+        {metric.key === "roas" && metric.value !== null ? "×" : null}
+      </strong>
       <div className="management-status">
         <span>
           Норма {metric.normDirection === "lower" ? "не выше" : "не ниже"}{" "}
@@ -109,9 +124,13 @@ function FormulaRow({
 export function ManagementDashboard({
   metrics,
   inputs,
+  activeMetricKey = null,
+  onMetricFocus,
 }: {
   metrics: ManagementMetric[];
   inputs: ManagementInputs;
+  activeMetricKey?: string | null;
+  onMetricFocus?: (key: string | null) => void;
 }) {
   return (
     <>
@@ -120,7 +139,13 @@ export function ManagementDashboard({
         aria-label="Управленческие показатели относительно нормативов"
       >
         {metrics.map((metric, index) => (
-          <MetricCard metric={metric} index={index} key={metric.key} />
+          <MetricCard
+            metric={metric}
+            index={index}
+            key={metric.key}
+            activeMetricKey={activeMetricKey}
+            onMetricFocus={onMetricFocus}
+          />
         ))}
       </section>
 

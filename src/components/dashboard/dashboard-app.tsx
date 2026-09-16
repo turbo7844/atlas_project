@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 
 import {
   DirectionFilter,
@@ -29,6 +30,11 @@ import {
   type DirectionId,
   type Granularity,
 } from "@/lib/constants";
+import {
+  buildLiveKpis,
+  buildLiveManagementInputs,
+  buildLiveManagementMetrics,
+} from "@/lib/atlas-live";
 import { formatDateTime } from "@/lib/format";
 import type { DashboardResponse } from "@/types/dashboard";
 
@@ -182,6 +188,7 @@ function restoreState(value: string): PersistedState {
 
 export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
+  const shellRef = useRef<HTMLElement>(null);
   const [state, setState] = useState<PersistedState>(defaultState);
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<DashboardResponse | null>(null);
@@ -189,6 +196,7 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -200,6 +208,12 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
     useState<FintabloSyncStatus | null>(null);
   const [bitrixSyncStatus, setBitrixSyncStatus] =
     useState<BitrixSyncStatus | null>(null);
+  const [theme, setTheme] = useState<"day" | "night">("day");
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [liveMode, setLiveMode] = useState(false);
+  const [livePlaying, setLivePlaying] = useState(false);
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [activeMetricKey, setActiveMetricKey] = useState<string | null>(null);
   const stateRef = useRef(state);
   const actualRevisionRef = useRef(0);
   const payrollRevisionRef = useRef(0);
@@ -220,11 +234,31 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
       if (saved) {
         setState(restoreState(saved));
       }
+      if (localStorage.getItem("atlas-dashboard-theme") === "night") {
+        setTheme("night");
+      }
     } catch {
       localStorage.removeItem("atlas-dashboard-filters");
     } finally {
       setReady(true);
     }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.atlasTheme = theme;
+    localStorage.setItem("atlas-dashboard-theme", theme);
+    return () => {
+      delete document.documentElement.dataset.atlasTheme;
+    };
+  }, [theme]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) setPresentationMode(false);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
   useEffect(() => {
@@ -562,6 +596,114 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
     value: PersistedState[Key],
   ) => setState((current) => ({ ...current, [key]: value }));
 
+  const seriesLength = data?.series.length ?? 0;
+  const safeActivePoint =
+    activePointIndex === null || seriesLength === 0
+      ? null
+      : Math.min(activePointIndex, seriesLength - 1);
+  const livePoint =
+    liveMode && safeActivePoint !== null
+      ? (data?.series[safeActivePoint] ?? null)
+      : null;
+  const previousLivePoint =
+    livePoint && safeActivePoint !== null && safeActivePoint > 0
+      ? (data?.series[safeActivePoint - 1] ?? null)
+      : null;
+  const visibleKpis =
+    data && livePoint
+      ? buildLiveKpis(
+          state.section,
+          data.kpis,
+          livePoint,
+          previousLivePoint,
+        )
+      : (data?.kpis ?? []);
+  const activePointLabel =
+    safeActivePoint === null
+      ? "Обзор"
+      : String(
+          data?.series[safeActivePoint]?.label ?? "Обзор",
+        );
+
+  useEffect(() => {
+    if (!liveMode || !livePlaying || seriesLength < 2) return;
+    const interval = window.setInterval(() => {
+      setActivePointIndex((current) =>
+        current === null ? 0 : (current + 1) % seriesLength,
+      );
+    }, 1_350);
+    return () => window.clearInterval(interval);
+  }, [liveMode, livePlaying, seriesLength]);
+
+  useEffect(() => {
+    setActivePointIndex((current) =>
+      current === null || seriesLength === 0
+        ? liveMode && seriesLength > 0
+          ? 0
+          : null
+        : Math.min(current, seriesLength - 1),
+    );
+  }, [liveMode, seriesLength, state.section]);
+
+  useEffect(() => {
+    setActiveMetricKey(null);
+  }, [state.section]);
+
+  const changeTheme = (
+    nextTheme: "day" | "night",
+    origin?: HTMLElement,
+  ) => {
+    if (nextTheme === theme) return;
+    const rect = origin?.getBoundingClientRect();
+    document.documentElement.style.setProperty(
+      "--theme-origin-x",
+      `${rect ? rect.left + rect.width / 2 : window.innerWidth / 2}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--theme-origin-y",
+      `${rect ? rect.top + rect.height / 2 : window.innerHeight / 2}px`,
+    );
+    const transitionDocument = document as Document & {
+      startViewTransition?: (update: () => void) => unknown;
+    };
+    if (
+      transitionDocument.startViewTransition &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      transitionDocument.startViewTransition(() => {
+        flushSync(() => setTheme(nextTheme));
+      });
+      return;
+    }
+    setTheme(nextTheme);
+  };
+
+  const togglePresentation = async () => {
+    if (presentationMode) {
+      setPresentationMode(false);
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => undefined);
+      }
+      return;
+    }
+    setPresentationMode(true);
+    await shellRef.current?.requestFullscreen().catch(() => undefined);
+  };
+
+  const startAtlasLive = async (origin: HTMLElement) => {
+    if (liveMode) {
+      setLiveMode(false);
+      setLivePlaying(false);
+      setActivePointIndex(null);
+      return;
+    }
+    changeTheme("night", origin);
+    setLiveMode(true);
+    setLivePlaying(true);
+    setActivePointIndex(0);
+    if (!presentationMode) await togglePresentation();
+  };
+
   const logout = async () => {
     setLoggingOut(true);
     try {
@@ -572,6 +714,53 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
     } catch {
       setToast("Не удалось выйти из системы. Повторите попытку.");
       setLoggingOut(false);
+    }
+  };
+
+  const exportTable = async () => {
+    if (!data || state.section === "dashboards") return;
+
+    const section = state.section;
+    const params = new URLSearchParams({
+      from: state.from,
+      to: state.to,
+      granularity: state.granularity,
+      directions: currentDirections.join(","),
+    });
+    setExporting(true);
+    setToast(null);
+
+    try {
+      const response = await fetch(
+        `/api/export/dashboard/${section}?${params}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          payload.error ?? "Не удалось сформировать Excel-файл.",
+        );
+      }
+
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `atlas-${section}-${state.from}_${state.to}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setToast("Таблица выгружена в Excel.");
+    } catch (exportError) {
+      setToast(
+        exportError instanceof Error
+          ? exportError.message
+          : "Не удалось сформировать Excel-файл.",
+      );
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -705,7 +894,11 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
     .join(" ");
 
   return (
-    <main className="dashboard-shell">
+    <main
+      className={`dashboard-shell${presentationMode ? " presentation-mode" : ""}${liveMode ? " atlas-live-active" : ""}`}
+      data-theme={theme}
+      ref={shellRef}
+    >
       <header className="app-header">
         <div className="brand">
           <span className="brand-mark">A</span>
@@ -759,6 +952,53 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
               )}
             </small>
           </div>
+          <div className="atlas-view-actions" aria-label="Режимы отображения">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={
+                theme === "day"
+                  ? "Включить ночную тему"
+                  : "Включить светлую тему"
+              }
+              data-tooltip={theme === "day" ? "Ночная тема" : "Светлая тема"}
+              onClick={(event) =>
+                changeTheme(
+                  theme === "day" ? "night" : "day",
+                  event.currentTarget,
+                )
+              }
+            >
+              <ThemeIcon night={theme === "night"} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={
+                presentationMode
+                  ? "Выйти из режима презентации"
+                  : "Открыть режим презентации"
+              }
+              data-tooltip={
+                presentationMode ? "Выйти из презентации" : "Режим презентации"
+              }
+              aria-pressed={presentationMode}
+              onClick={() => void togglePresentation()}
+            >
+              <PresentationIcon active={presentationMode} />
+            </button>
+            <button
+              type="button"
+              className={`live-launch-button${liveMode ? " active" : ""}`}
+              aria-label={liveMode ? "Завершить Atlas Live" : "Запустить Atlas Live"}
+              aria-pressed={liveMode}
+              disabled={!data || seriesLength === 0}
+              onClick={(event) => void startAtlasLive(event.currentTarget)}
+            >
+              <PlayIcon playing={liveMode && livePlaying} />
+              <span>Atlas Live</span>
+            </button>
+          </div>
           {isAdmin ? (
             <>
               <button
@@ -793,6 +1033,20 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
                 onDashboardNormsSaved={() =>
                   setRefreshToken((value) => value + 1)
                 }
+                onPayrollImported={() => {
+                  void fetch("/api/sync/payroll", { cache: "no-store" })
+                    .then(async (response) => {
+                      if (!response.ok) return;
+                      const status =
+                        (await response.json()) as PayrollSyncStatus;
+                      setPayrollSyncStatus(status);
+                      payrollRevisionRef.current = status.revision;
+                    })
+                    .catch(() => undefined);
+                  if (stateRef.current.section === "revenue") {
+                    setRefreshToken((value) => value + 1);
+                  }
+                }}
               />
             </>
           ) : null}
@@ -863,6 +1117,10 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
         {dataNotice ? <p className="data-notice">{dataNotice}</p> : null}
       </section>
 
+      <div
+        className={`dashboard-stage${activeMetricKey ? " has-metric-focus" : ""}`}
+        key={`${state.section}-${state.from}-${state.to}-${state.granularity}-${refreshToken}`}
+      >
       {currentDirections.length === 0 ? (
         <EmptyState
           title="Выберите хотя бы одно направление"
@@ -890,15 +1148,125 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
         data.managementMetrics &&
         data.managementInputs ? (
           <ManagementDashboard
-            metrics={data.managementMetrics}
-            inputs={data.managementInputs}
+            metrics={
+              livePoint
+                ? buildLiveManagementMetrics(
+                    data.managementMetrics,
+                    livePoint,
+                  )
+                : data.managementMetrics
+            }
+            inputs={
+              livePoint
+                ? buildLiveManagementInputs(data.managementInputs, livePoint)
+                : data.managementInputs
+            }
+            activeMetricKey={activeMetricKey}
+            onMetricFocus={setActiveMetricKey}
           />
         ) : (
           <>
-            <KpiGrid kpis={data.kpis} marketing={state.section === "marketing"} />
-            <SectionContent section={state.section} data={data} />
+            <KpiGrid
+              kpis={visibleKpis}
+              marketing={state.section === "marketing"}
+              activeMetricKey={activeMetricKey}
+              onMetricFocus={setActiveMetricKey}
+            />
+            <SectionContent
+              section={state.section}
+              data={data}
+              exporting={exporting}
+              activePointIndex={safeActivePoint}
+              activeMetricKey={activeMetricKey}
+              lockCursor={liveMode}
+              onExport={() => void exportTable()}
+              onPointChange={setActivePointIndex}
+              onMetricFocus={setActiveMetricKey}
+            />
           </>
         )
+      ) : null}
+      </div>
+
+      {liveMode && seriesLength > 0 ? (
+        <aside className="atlas-live-console" aria-label="Управление Atlas Live">
+          <div className="atlas-live-status">
+            <span>Atlas Live</span>
+            <strong>{activePointLabel}</strong>
+          </div>
+          <button
+            type="button"
+            className="atlas-live-control"
+            aria-label="Предыдущий период"
+            onClick={() => {
+              setLivePlaying(false);
+              setActivePointIndex((current) =>
+                current === null ? 0 : (current - 1 + seriesLength) % seriesLength,
+              );
+            }}
+          >
+            <StepIcon direction="previous" />
+          </button>
+          <button
+            type="button"
+            className="atlas-live-control primary"
+            aria-label={livePlaying ? "Приостановить" : "Продолжить"}
+            onClick={() => setLivePlaying((current) => !current)}
+          >
+            <PlayIcon playing={livePlaying} />
+          </button>
+          <button
+            type="button"
+            className="atlas-live-control"
+            aria-label="Следующий период"
+            onClick={() => {
+              setLivePlaying(false);
+              setActivePointIndex((current) =>
+                current === null ? 0 : (current + 1) % seriesLength,
+              );
+            }}
+          >
+            <StepIcon direction="next" />
+          </button>
+          <label
+            className="atlas-live-timeline"
+            style={{
+              "--live-progress": `${
+                seriesLength <= 1
+                  ? 100
+                  : ((safeActivePoint ?? 0) / (seriesLength - 1)) * 100
+              }%`,
+            } as React.CSSProperties}
+          >
+            <span className="visually-hidden">Период Atlas Live</span>
+            <input
+              type="range"
+              min="0"
+              max={Math.max(seriesLength - 1, 0)}
+              value={safeActivePoint ?? 0}
+              onChange={(event) => {
+                setLivePlaying(false);
+                setActivePointIndex(Number(event.target.value));
+              }}
+            />
+          </label>
+          <span className="atlas-live-counter">
+            {String((safeActivePoint ?? 0) + 1).padStart(2, "0")} /{" "}
+            {String(seriesLength).padStart(2, "0")}
+          </span>
+          <button
+            type="button"
+            className="atlas-live-close"
+            aria-label="Завершить Atlas Live"
+            onClick={() => {
+              setLiveMode(false);
+              setLivePlaying(false);
+              setActivePointIndex(null);
+            }}
+          >
+            Завершить
+          </button>
+        </aside>
       ) : null}
 
       <footer className="app-footer">
@@ -922,6 +1290,55 @@ function LoadingState() {
         <span key={index} />
       ))}
     </div>
+  );
+}
+
+function ThemeIcon({ night }: { night: boolean }) {
+  return night ? (
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M19.5 15.2A8 8 0 0 1 8.8 4.5 8 8 0 1 0 19.5 15.2Z" />
+    </svg>
+  );
+}
+
+function PresentationIcon({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      {active ? (
+        <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+      ) : (
+        <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+      )}
+    </svg>
+  );
+}
+
+function PlayIcon({ playing }: { playing: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" width="17" height="17" fill="currentColor" aria-hidden="true">
+      {playing ? (
+        <path d="M5 4h3v12H5zM12 4h3v12h-3z" />
+      ) : (
+        <path d="m6 4 10 6-10 6z" />
+      )}
+    </svg>
+  );
+}
+
+function StepIcon({ direction }: { direction: "previous" | "next" }) {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
+      {direction === "previous" ? (
+        <path d="M4 4h2v12H4zm3 6 9-6v12z" />
+      ) : (
+        <path d="M14 4h2v12h-2zm-1 6-9 6V4z" />
+      )}
+    </svg>
   );
 }
 

@@ -5,9 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { synchronizeBitrixSales } from "@/services/bitrix24-sales-sync";
 import { synchronizeFintabloCashFlow } from "@/services/fintablo-sync";
 import { synchronizeMarketingPlan } from "@/services/marketing-plan-sync";
-import { synchronizePayroll } from "@/services/payroll-sync";
-import { watchPayrollXlsx } from "@/services/payroll-xlsx-source";
-import { createSerializedTask } from "@/services/serialized-task";
 
 let active = true;
 
@@ -18,18 +15,6 @@ async function runMarketingPlan() {
   } catch (error) {
     console.error(
       "Автоматическая синхронизация завершилась ошибкой:",
-      error instanceof Error ? error.message : error,
-    );
-  }
-}
-
-async function runPayroll() {
-  try {
-    const result = await synchronizePayroll(SyncTrigger.AUTOMATIC);
-    console.info(`[${result.finishedAt}] ${result.message}`);
-  } catch (error) {
-    console.error(
-      "Автоматическая синхронизация ФОТ завершилась ошибкой:",
       error instanceof Error ? error.message : error,
     );
   }
@@ -78,21 +63,6 @@ async function main() {
     runBitrixSales(),
   ]);
 
-  const payrollTask = createSerializedTask(runPayroll);
-  await payrollTask.request();
-  let stopPayrollWatch: () => void = () => undefined;
-  try {
-    stopPayrollWatch = watchPayrollXlsx(() => {
-      if (active) void payrollTask.request();
-    });
-    console.info("Наблюдение за локальным XLSX с начислениями ФОТ запущено.");
-  } catch (error) {
-    console.error(
-      "Не удалось запустить наблюдение за XLSX с начислениями ФОТ:",
-      error instanceof Error ? error.message : error,
-    );
-  }
-
   const marketingInterval = setInterval(
     () => {
       if (active) void runMarketingPlan();
@@ -117,8 +87,6 @@ async function main() {
     clearInterval(marketingInterval);
     clearInterval(fintabloInterval);
     clearInterval(bitrixInterval);
-    stopPayrollWatch();
-    await payrollTask.stop();
     await prisma.$disconnect();
     process.exit(0);
   };

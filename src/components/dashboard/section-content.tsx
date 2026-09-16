@@ -5,6 +5,7 @@ import {
   FunnelChart,
   GroupedBarChart,
   LineChart,
+  type ChartInteractionProps,
 } from "@/components/dashboard/charts";
 import { DashboardTable } from "@/components/dashboard/tables";
 import { formatValue } from "@/lib/format";
@@ -17,21 +18,31 @@ import type {
 export function SectionContent({
   section,
   data,
+  exporting,
+  onExport,
+  ...interaction
 }: {
   section: DashboardSection;
   data: DashboardResponse;
-}) {
+  exporting: boolean;
+  onExport: () => void;
+} & ChartInteractionProps) {
   if (section === "dashboards") return null;
 
   return (
     <>
       <div className="feature-grid">
-        {section === "marketing" ? <MarketingFeatures data={data} /> : null}
-        {section === "revenue" ? <RevenueFeatures data={data} /> : null}
-        {section === "cash-flow" ? <CashFlowFeatures data={data} /> : null}
-        {section === "sales" ? <SalesFeatures data={data} /> : null}
+        {section === "marketing" ? <MarketingFeatures data={data} interaction={interaction} /> : null}
+        {section === "revenue" ? <RevenueFeatures data={data} interaction={interaction} /> : null}
+        {section === "cash-flow" ? <CashFlowFeatures data={data} interaction={interaction} /> : null}
+        {section === "sales" ? <SalesFeatures data={data} interaction={interaction} /> : null}
       </div>
-      <DashboardTable section={section} data={data} />
+      <DashboardTable
+        section={section}
+        data={data}
+        exporting={exporting}
+        onExport={onExport}
+      />
     </>
   );
 }
@@ -60,7 +71,18 @@ function Panel({
   );
 }
 
-function MarketingFeatures({ data }: { data: DashboardResponse }) {
+function focusClass(activeKey: string | null | undefined, ownKey: string) {
+  if (!activeKey) return "";
+  return activeKey === ownKey ? " focus-active" : " focus-muted";
+}
+
+function MarketingFeatures({
+  data,
+  interaction,
+}: {
+  data: DashboardResponse;
+  interaction: ChartInteractionProps;
+}) {
   return (
     <>
       <Panel eyebrow="Выполнение" title="План / факт">
@@ -70,7 +92,12 @@ function MarketingFeatures({ data }: { data: DashboardResponse }) {
               ? 0
               : Math.min(kpi.completion * 100, 140);
             return (
-              <div className="progress-item" key={kpi.key}>
+              <div
+                className={`progress-item focus-target${focusClass(interaction.activeMetricKey, kpi.key)}`}
+                key={kpi.key}
+                onPointerEnter={() => interaction.onMetricFocus?.(kpi.key)}
+                onPointerLeave={() => interaction.onMetricFocus?.(null)}
+              >
                 <div>
                   <span>{kpi.label}</span>
                   <strong>
@@ -101,13 +128,21 @@ function MarketingFeatures({ data }: { data: DashboardResponse }) {
           secondaryKey="actualBudget"
           primaryLabel="План"
           secondaryLabel="Факт"
+          focusKey="budget"
+          {...interaction}
         />
       </Panel>
     </>
   );
 }
 
-function RevenueFeatures({ data }: { data: DashboardResponse }) {
+function RevenueFeatures({
+  data,
+  interaction,
+}: {
+  data: DashboardResponse;
+  interaction: ChartInteractionProps;
+}) {
   const rows = data.rows as RevenueRow[];
   const maxRevenue = Math.max(...rows.map((row) => row.revenue), 1);
   return (
@@ -115,7 +150,12 @@ function RevenueFeatures({ data }: { data: DashboardResponse }) {
       <Panel eyebrow="Агрегаты" title="Направления">
         <div className="direction-bars">
           {rows.map((row) => (
-            <div key={row.directionId}>
+            <div
+              className={`focus-target${focusClass(interaction.activeMetricKey, "revenue")}`}
+              key={row.directionId}
+              onPointerEnter={() => interaction.onMetricFocus?.("revenue")}
+              onPointerLeave={() => interaction.onMetricFocus?.(null)}
+            >
               <div>
                 <span>{row.direction}</span>
                 <strong>{formatValue(row.revenue, "currency")}</strong>
@@ -138,12 +178,12 @@ function RevenueFeatures({ data }: { data: DashboardResponse }) {
         <LineChart
           data={data.series}
           metrics={[
-            { key: "revenue", label: "Выручка", color: "#1f5b8f", format: "currency" },
-            { key: "contractorCost", label: "Подрядчики", color: "#d3a86f", format: "currency" },
+            { key: "revenue", label: "Выручка", color: "var(--chart-1)", format: "currency" },
+            { key: "contractorCost", focusKey: "contractors", label: "Подрядчики", color: "var(--chart-4)", format: "currency" },
             {
               key: "payroll",
               label: "ФОТ",
-              color: "#61727f",
+              color: "var(--chart-5)",
               format: "currency",
               details: [
                 { key: "payrollSalary", label: "Оклад", format: "currency" },
@@ -154,17 +194,28 @@ function RevenueFeatures({ data }: { data: DashboardResponse }) {
             },
           ]}
           ariaLabel="Динамика выручки, ФОТ и оплаты подрядчиков"
+          {...interaction}
         />
       </Panel>
     </>
   );
 }
 
-function CashFlowFeatures({ data }: { data: DashboardResponse }) {
+function CashFlowFeatures({
+  data,
+  interaction,
+}: {
+  data: DashboardResponse;
+  interaction: ChartInteractionProps;
+}) {
   return (
     <>
       <Panel eyebrow="Структура" title="Расходы">
-        <DonutChart data={data.breakdown ?? []} />
+        <DonutChart
+          data={data.breakdown ?? []}
+          activeMetricKey={interaction.activeMetricKey}
+          onMetricFocus={interaction.onMetricFocus}
+        />
       </Panel>
       <Panel eyebrow="Динамика" title="Расходы по статьям">
         <LineChart
@@ -172,32 +223,45 @@ function CashFlowFeatures({ data }: { data: DashboardResponse }) {
           metrics={(data.breakdown ?? []).map((item) => ({
             key: item.key,
             label: item.label,
+            focusKey: "expense",
             format: "currency",
           }))}
           ariaLabel="Динамика расходов по крупнейшим статьям"
+          {...interaction}
         />
       </Panel>
     </>
   );
 }
 
-function SalesFeatures({ data }: { data: DashboardResponse }) {
+function SalesFeatures({
+  data,
+  interaction,
+}: {
+  data: DashboardResponse;
+  interaction: ChartInteractionProps;
+}) {
   return (
     <>
       <Panel eyebrow="Конверсия" title="Воронка продаж">
-        <FunnelChart data={data.funnel ?? []} />
+        <FunnelChart
+          data={data.funnel ?? []}
+          activeMetricKey={interaction.activeMetricKey}
+          onMetricFocus={interaction.onMetricFocus}
+        />
       </Panel>
       <Panel eyebrow="Динамика" title="Этапы продаж">
         <LineChart
           data={data.series}
           metrics={[
-            { key: "leads", label: "Лиды", color: "#1f5b8f" },
-            { key: "meetings", label: "Встречи", color: "#4779a2" },
-            { key: "proposals", label: "КП", color: "#6f96b8" },
-            { key: "contracts", label: "Договоры", color: "#9bb3c7" },
-            { key: "payments", label: "Оплаты", color: "#d3a86f" },
+            { key: "leads", label: "Лиды", color: "var(--chart-1)" },
+            { key: "meetings", focusKey: "leads", label: "Встречи", color: "var(--chart-2)" },
+            { key: "proposals", focusKey: "contracts", label: "КП", color: "var(--chart-3)" },
+            { key: "contracts", label: "Договоры", color: "var(--chart-5)" },
+            { key: "payments", label: "Оплаты", color: "var(--chart-4)" },
           ]}
           ariaLabel="Динамика этапов продаж"
+          {...interaction}
         />
       </Panel>
     </>
