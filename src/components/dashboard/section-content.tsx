@@ -18,10 +18,14 @@ import type {
 export function SectionContent({
   section,
   data,
+  exporting,
+  onExport,
   ...interaction
 }: {
   section: DashboardSection;
   data: DashboardResponse;
+  exporting: boolean;
+  onExport: () => void;
 } & ChartInteractionProps) {
   if (section === "dashboards") return null;
 
@@ -33,7 +37,12 @@ export function SectionContent({
         {section === "cash-flow" ? <CashFlowFeatures data={data} interaction={interaction} /> : null}
         {section === "sales" ? <SalesFeatures data={data} interaction={interaction} /> : null}
       </div>
-      <DashboardTable section={section} data={data} />
+      <DashboardTable
+        section={section}
+        data={data}
+        exporting={exporting}
+        onExport={onExport}
+      />
     </>
   );
 }

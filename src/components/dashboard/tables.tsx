@@ -13,30 +13,62 @@ import type {
 export function DashboardTable({
   section,
   data,
+  exporting,
+  onExport,
 }: {
   section: DashboardSection;
   data: DashboardResponse;
+  exporting: boolean;
+  onExport: () => void;
 }) {
   if (section === "dashboards") return null;
 
   if (section === "marketing") {
-    return <MarketingTable rows={data.rows as MarketingRow[]} />;
+    return (
+      <MarketingTable
+        rows={data.rows as MarketingRow[]}
+        exporting={exporting}
+        onExport={onExport}
+      />
+    );
   }
   if (section === "revenue") {
-    return <RevenueTable rows={data.rows as RevenueRow[]} />;
+    return (
+      <RevenueTable
+        rows={data.rows as RevenueRow[]}
+        exporting={exporting}
+        onExport={onExport}
+      />
+    );
   }
   if (section === "cash-flow") {
-    return <CashFlowTable rows={data.rows as CashFlowRow[]} />;
+    return (
+      <CashFlowTable
+        rows={data.rows as CashFlowRow[]}
+        exporting={exporting}
+        onExport={onExport}
+      />
+    );
   }
-  return <SalesTable rows={data.rows as SalesRow[]} />;
+  return (
+    <SalesTable
+      rows={data.rows as SalesRow[]}
+      exporting={exporting}
+      onExport={onExport}
+    />
+  );
 }
 
 function TableShell({
   title,
   children,
+  exporting,
+  onExport,
 }: {
   title: string;
   children: React.ReactNode;
+  exporting: boolean;
+  onExport: () => void;
 }) {
   return (
     <section className="table-section reveal">
@@ -45,6 +77,16 @@ function TableShell({
           <span className="eyebrow">Детализация</span>
           <h2>{title}</h2>
         </div>
+        <button
+          type="button"
+          className="table-export-button"
+          aria-label={`Выгрузить таблицу «${title}» в Excel`}
+          disabled={exporting}
+          onClick={onExport}
+        >
+          <DownloadIcon />
+          <span>{exporting ? "Формируем…" : "Выгрузить в Excel"}</span>
+        </button>
       </div>
       <div className="table-scroll">{children}</div>
     </section>
@@ -68,9 +110,17 @@ function Pair({
   );
 }
 
-function MarketingTable({ rows }: { rows: MarketingRow[] }) {
+type TableExportProps = {
+  exporting: boolean;
+  onExport: () => void;
+};
+
+function MarketingTable({
+  rows,
+  ...exportProps
+}: { rows: MarketingRow[] } & TableExportProps) {
   return (
-    <TableShell title="Маркетинг по направлениям">
+    <TableShell title="Маркетинг по направлениям" {...exportProps}>
       <table>
         <thead>
           <tr>
@@ -101,9 +151,12 @@ function MarketingTable({ rows }: { rows: MarketingRow[] }) {
   );
 }
 
-function RevenueTable({ rows }: { rows: RevenueRow[] }) {
+function RevenueTable({
+  rows,
+  ...exportProps
+}: { rows: RevenueRow[] } & TableExportProps) {
   return (
-    <TableShell title="Экономика направлений">
+    <TableShell title="Экономика направлений" {...exportProps}>
       <table>
         <thead>
           <tr>
@@ -145,9 +198,12 @@ function RevenueTable({ rows }: { rows: RevenueRow[] }) {
   );
 }
 
-function CashFlowTable({ rows }: { rows: CashFlowRow[] }) {
+function CashFlowTable({
+  rows,
+  ...exportProps
+}: { rows: CashFlowRow[] } & TableExportProps) {
   return (
-    <TableShell title="Движение средств по направлениям">
+    <TableShell title="Движение средств по направлениям" {...exportProps}>
       <table>
         <thead>
           <tr>
@@ -174,9 +230,12 @@ function CashFlowTable({ rows }: { rows: CashFlowRow[] }) {
   );
 }
 
-function SalesTable({ rows }: { rows: SalesRow[] }) {
+function SalesTable({
+  rows,
+  ...exportProps
+}: { rows: SalesRow[] } & TableExportProps) {
   return (
-    <TableShell title="Продажи по направлениям">
+    <TableShell title="Продажи по направлениям" {...exportProps}>
       <table>
         <thead>
           <tr>
@@ -204,5 +263,21 @@ function SalesTable({ rows }: { rows: SalesRow[] }) {
         </tbody>
       </table>
     </TableShell>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
+      <path d="M10 2v10m0 0 4-4m-4 4L6 8M3 14v3h14v-3" />
+    </svg>
   );
 }

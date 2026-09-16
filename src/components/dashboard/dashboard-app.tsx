@@ -196,6 +196,7 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -716,6 +717,53 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
     }
   };
 
+  const exportTable = async () => {
+    if (!data || state.section === "dashboards") return;
+
+    const section = state.section;
+    const params = new URLSearchParams({
+      from: state.from,
+      to: state.to,
+      granularity: state.granularity,
+      directions: currentDirections.join(","),
+    });
+    setExporting(true);
+    setToast(null);
+
+    try {
+      const response = await fetch(
+        `/api/export/dashboard/${section}?${params}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          payload.error ?? "Не удалось сформировать Excel-файл.",
+        );
+      }
+
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `atlas-${section}-${state.from}_${state.to}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setToast("Таблица выгружена в Excel.");
+    } catch (exportError) {
+      setToast(
+        exportError instanceof Error
+          ? exportError.message
+          : "Не удалось сформировать Excel-файл.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const synchronize = async () => {
     setSyncing(true);
     setToast(null);
@@ -1127,9 +1175,11 @@ export function DashboardApp({ isAdmin }: { isAdmin: boolean }) {
             <SectionContent
               section={state.section}
               data={data}
+              exporting={exporting}
               activePointIndex={safeActivePoint}
               activeMetricKey={activeMetricKey}
               lockCursor={liveMode}
+              onExport={() => void exportTable()}
               onPointChange={setActivePointIndex}
               onMetricFocus={setActiveMetricKey}
             />

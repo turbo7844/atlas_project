@@ -2165,6 +2165,30 @@ button:disabled {
   border-bottom: 1px solid var(--ink);
 }
 
+.table-export-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--blue);
+  background: transparent;
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.table-export-button:hover:not(:disabled) {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.table-export-button svg {
+  flex: 0 0 auto;
+}
+
 .table-scroll {
   overflow-x: auto;
   scrollbar-color: var(--line-strong) transparent;
@@ -2994,6 +3018,19 @@ tbody tr:hover {
 
   .section-heading {
     padding-inline: 8px;
+  }
+
+  .table-section .section-heading {
+    gap: 16px;
+  }
+
+  .table-export-button {
+    min-width: 36px;
+    padding-inline: 9px;
+  }
+
+  .table-export-button span {
+    display: none;
   }
 
   .progress-list,
